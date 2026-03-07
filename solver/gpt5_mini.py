@@ -1,8 +1,8 @@
 """
-GPT-4o-mini baseline solver for SWE-P-Bench.
+GPT-5-mini baseline solver for SWE-P-Bench.
 
 Given a dataset of benchmark instances, this solver asks OpenAI's
-gpt-4o-mini model to produce a unified diff patch that resolves the
+gpt-5-mini model to produce a unified diff patch that resolves the
 described issue, using only the problem statement (and optionally hints).
 
 The prompt strategy is deliberately minimal (no retrieval, no repository
@@ -36,7 +36,7 @@ from tqdm import tqdm
 
 load_dotenv()
 
-MODEL = "gpt-4o-mini"
+MODEL = "gpt-5-mini"
 
 SYSTEM_PROMPT = """\
 You are an expert C++ software engineer working on the ACTS project \

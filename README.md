@@ -15,7 +15,7 @@ SWE-P-Bench/
 ├── scraper/          # GitHub issue/PR collection pipeline
 │   └── acts.py       # ACTS-specific scraper
 ├── solver/           # LLM solvers
-│   └── gpt4o_mini.py # OpenAI GPT-4o-mini baseline solver
+│   └── gpt5_mini.py  # OpenAI GPT-5-mini baseline solver
 ├── evaluator/        # Patch application and test execution
 │   └── harness.py    # Docker-based evaluation harness
 ├── metrics/          # Scoring and reporting
@@ -34,14 +34,14 @@ pip install -r requirements.txt
 # 1. Scrape ACTS issues → data/acts/candidates.jsonl
 python -m scraper.acts --repo acts-project/acts --out data/acts/candidates.jsonl
 
-# 2. Run the GPT-4o-mini solver → results/gpt4o_mini/
-python -m solver.gpt4o_mini --dataset data/acts/candidates.jsonl --out results/gpt4o_mini/
+# 2. Run the GPT-5-mini solver → results/gpt5_mini/
+python -m solver.gpt5_mini --dataset data/acts/candidates.jsonl --out results/gpt5_mini/
 
-# 3. Evaluate patches → results/gpt4o_mini/eval.jsonl
-python -m evaluator.harness --results results/gpt4o_mini/ --dataset data/acts/candidates.jsonl
+# 3. Evaluate patches → results/gpt5_mini/eval.jsonl
+python -m evaluator.harness --results results/gpt5_mini/ --dataset data/acts/candidates.jsonl
 
 # 4. Print metrics
-python -m metrics.score --eval results/gpt4o_mini/eval.jsonl
+python -m metrics.score --eval results/gpt5_mini/eval.jsonl
 ```
 
 ## Environment Variables
