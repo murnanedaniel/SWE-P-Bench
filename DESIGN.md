@@ -25,23 +25,48 @@ requiring the upstream project to follow TDD.
 
 ## 2. Target Repositories
 
-Initial target: **~10 repositories** spanning both Python and C++ HEP codebases that track issues
-on GitHub (not external trackers like JIRA).
+**Phase 1 (Python-only):** 7 Python HEP repositories, targeting **~1,000 validated instances**.
+Phase 2 extends to C++ repos.
+
+### Phase 1 — Python repositories
+
+| Repository | Language | Build/Test | Closed issues (approx) |
+|---|---|---|---|
+| `scikit-hep/awkward` | Python | pytest | ~1,500 |
+| `scikit-hep/uproot5` | Python | pytest | ~400 |
+| `CoffeaTeam/coffea` | Python | pytest | ~500 |
+| `scikit-hep/pyhf` | Python | pytest | ~300 |
+| `scikit-hep/iminuit` | Python/C++ | pytest | ~300 |
+| `zfit/zfit` | Python | pytest | ~300 |
+| `scikit-hep/particle` | Python | pytest | ~150 |
+
+**Estimated funnel for Phase 1:**
+
+```
+~3,000 closed issues
+  × ~35% pairing rate (have linked merged PR)   →  ~1,050 raw candidates
+  × ~80% quality filter pass rate               →    ~840 filtered candidates
+  × ~70% LLM test validation yield (with retry) →    ~590 validated instances
+                                                 ≈  O(1,000) benchmark instances
+```
+
+The Python case is well-suited to this scale: `pip install` takes seconds, pytest runs are
+fast (~10–60s per instance), and LLMs generate reliable pytest code. The entire validation
+pass for 840 candidates can run in ~25 CPU-hours, easily parallelised.
+
+### Phase 2 — C++ repositories (deferred)
 
 | Repository | Language | Build/Test | Notes |
 |---|---|---|---|
-| `acts-project/acts` | C++ | CMake + CTest/Catch2 | Already scraped |
-| `root-project/root` | C++/Python | CMake + CTest | Very large; filter carefully |
+| `acts-project/acts` | C++ | CMake + CTest/Catch2 | Already scraped; infrastructure exists |
+| `root-project/root` | C++/Python | CMake + CTest | Very large; needs pre-built Docker image |
 | `AIDASoft/DD4hep` | C++ | CMake + CTest | Detector description |
 | `AIDASoft/podio` | C++ | CMake + CTest | Event data model I/O |
 | `key4hep/EDM4hep` | C++ | CMake + CTest | Future collider EDM |
-| `scikit-hep/awkward` | Python | pytest | Array operations |
-| `scikit-hep/uproot5` | Python | pytest | ROOT I/O in Python |
-| `CoffeaTeam/coffea` | Python | pytest | HEP analysis framework |
-| `scikit-hep/pyhf` | Python | pytest | Statistical inference |
-| `scikit-hep/iminuit` | Python/C++ | pytest | Minimisation |
-| `zfit/zfit` | Python | pytest | Fitting framework |
 | `GooFit/GooFit` | C++/Python | CMake + pytest | GPU fitting |
+
+C++ repos are deferred due to 15–30 min build times per instance and the added complexity of
+CMake diffs for test registration. See §10 (Open Questions) for details.
 
 **Selection criteria:** must have GitHub Issues (not JIRA/GitLab-only), active development history,
 and a reasonable volume of closed issues linked to merged PRs.
@@ -64,7 +89,7 @@ and a reasonable volume of closed issues linked to merged PRs.
 │  STEP 2 — QUALITY FILTERING                                              │
 │  filter/quality.py                                                       │
 │  • Automated filters: issue body length, diff size, file diversity       │
-│  • Aim for ~100 high-quality candidates across all repos                 │
+│  • Aim for ~840 filtered candidates (from ~1,050 raw) across all repos   │
 │  • Write data/benchmark_candidates.jsonl                                 │
 └──────────────────────────────────────────────────────────────────────────┘
                                     │
@@ -260,7 +285,7 @@ validate on the first attempt; the retry loop should bring total yield to ~70–
 |---|---|---|---|
 | Repo config registry | `repos.yml` | P0 | Per-repo build/test/Docker metadata |
 | Generic multi-repo scraper | `scraper/generic.py` | P0 | Refactor `acts.py` → shared base |
-| Quality filter | `filter/quality.py` | P1 | Select top ~100 candidates across repos |
+| Quality filter | `filter/quality.py` | P1 | Filter ~1,050 raw candidates to ~840 |
 | LLM test generator | `test_writer/generator.py` | P0 | Core new component |
 | Test validator | `test_writer/validator.py` | P0 | Docker fail→pass verification |
 | Generalized evaluator | `evaluator/harness.py` (extend) | P1 | Multi-repo Docker support |
@@ -306,23 +331,28 @@ Each instance in `validated_benchmark.jsonl` has all original SWE-bench fields p
 
 ## 9. Implementation Roadmap
 
-### Phase 1 — Multi-repo scraping (no test generation)
-1. Write `repos.yml` with configs for all 12 repos
+### Phase 1 — Python multi-repo scraping
+1. Write `repos.yml` with configs for the 7 Python repos
 2. Refactor `scraper/acts.py` → `scraper/generic.py` (repo config driven)
-3. Run scraper across all repos; collect `data/raw/*.jsonl`
-4. Write `filter/quality.py`; produce `data/benchmark_candidates.jsonl` (~200 candidates pre-filter)
+3. Run scraper across all Python repos; collect `data/raw/*.jsonl` (~1,050 raw candidates)
+4. Write `filter/quality.py`; produce `data/benchmark_candidates.jsonl` (~840 filtered candidates)
 
 ### Phase 2 — LLM test generation and validation
 5. Write `test_writer/generator.py` (context assembly + LLM prompting)
 6. Write `test_writer/validator.py` (Docker fail→pass loop with retry)
-7. Run on all candidates; expect ~100 validated instances
-8. Produce `data/validated_benchmark.jsonl`
+7. Run on all ~840 candidates; expect ~590 validated instances (~70% yield)
+8. Produce `data/validated_benchmark.jsonl` — target **O(1,000) instances**
 
 ### Phase 3 — Evaluation and reporting
 9. Generalise `evaluator/harness.py` to consume `repos.yml`
 10. Run baseline solver over validated benchmark
 11. Evaluate and report results
 12. Publish dataset and paper
+
+### Phase 4 — C++ extension (future)
+13. Add C++ repos to `repos.yml`; extend scraper and evaluator for CMake/CTest
+14. Handle CMake diff generation for test registration
+15. Use pre-built Docker images to keep validation tractable
 
 ---
 
@@ -333,7 +363,9 @@ Each instance in `validated_benchmark.jsonl` has all original SWE-bench fields p
 - **Test isolation in C++:** Catch2/GoogleTest tests are typically in a single binary; generated
   tests need to be added to the right `CMakeLists.txt`. The generator must also output the CMake
   diff, not just the `.cpp` diff.
-- **LLM cost:** Generating tests for ~200 candidates with large context windows (source files) at
-  Opus-level pricing is non-trivial. Estimate ~$50–150 for the generation pass.
+- **LLM cost:** Generating tests for ~840 candidates with ~10k tokens of context each. At Opus
+  pricing (~$15/M input tokens) that's ~$125 in input tokens alone; output and retries add more.
+  Strategy: use Sonnet for first-pass generation, Opus only for retry attempts. Estimated total
+  ~$200–400 for the full Phase 1 generation pass.
 - **Flaky tests:** Some generated tests may be non-deterministic. The validator should run each
   test 3 times before accepting it.
