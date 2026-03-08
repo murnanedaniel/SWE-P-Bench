@@ -1,24 +1,22 @@
 """
 ACTS GitHub scraper — collects candidate benchmark instances.
 
-Pipeline (mirrors SWE-bench Stage I + II):
-  1. Fetch all merged PRs for acts-project/acts.
-  2. Find PRs that close a GitHub issue (via "fixes #N" / "closes #N" in body).
-  3. Keep PRs whose diff touches at least one test file.
-  4. Fetch the issue text (problem_statement) and pre-PR comments (hints_text).
-  5. Compute the base_commit (commit just before the PR's first commit).
-  6. Split the PR diff into patch (non-test files) and test_patch (test files).
-  7. Write each passing instance as a JSONL record.
+Strategy (issue-first, matching empirical ACTS development patterns):
+  1. Fetch ALL closed true issues (not PRs) from acts-project/acts.
+  2. For each issue, query its timeline to find merged PRs that cross-referenced it.
+     (ACTS rarely uses "closes #N" in PR bodies — only ~2% of fix PRs do.
+      The timeline cross-reference event is the reliable signal.)
+  3. Fetch the PR diff; split into patch (non-test) and test_patch (test files).
+  4. Filter: must touch at least one source file (.cpp/.hpp/.h/.py/.cuh).
+  5. Write each passing instance as a JSONL record.
 
-Note: FAIL_TO_PASS / PASS_TO_PASS extraction requires actually running tests
-inside a build environment and is NOT done here — those fields are left empty
-for manual or later automated filling. The scraper produces "Stage II" data.
+FAIL_TO_PASS / PASS_TO_PASS fields are left empty — populated by the evaluator.
 
 Usage:
-    python -m scraper.acts [--repo REPO] [--out PATH] [--max-prs N] [--since DATE]
+    python -m scraper.acts [--repo REPO] [--out PATH] [--cache-dir DIR]
 
 Environment:
-    GITHUB_TOKEN  GitHub PAT (required; otherwise rate-limited to 60 req/hr)
+    GITHUB_TOKEN  GitHub PAT — strongly recommended (5000 req/hr vs 60 req/hr)
 """
 
 from __future__ import annotations
@@ -29,6 +27,7 @@ import os
 import re
 import sys
 import time
+from pathlib import Path
 from typing import Any, Generator
 
 import requests
@@ -39,15 +38,13 @@ load_dotenv()
 
 GITHUB_API = "https://api.github.com"
 DEFAULT_REPO = "acts-project/acts"
-# Patterns that indicate a PR fixes an issue
-_CLOSES_RE = re.compile(
-    r"(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*#(\d+)",
+
+_SRC_FILE_RE = re.compile(
+    r"\.(cpp|hpp|h|ipp|cuh|cu|py)$",
     re.IGNORECASE,
 )
-# Test file heuristics for ACTS (C++ project)
 _TEST_FILE_RE = re.compile(
-    r"(Tests?/|tests?/|_test\.|test_|/test|UnitTest|IntegrationTest)",
-    re.IGNORECASE,
+    r"(Tests?/|tests?/|_[Tt]est\.|[Tt]est_|/[Tt]est[^/]*\.|UnitTest|IntegrationTest)",
 )
 
 
@@ -66,27 +63,26 @@ def _session(token: str | None = None) -> requests.Session:
 
 
 def _get(session: requests.Session, url: str, params: dict | None = None) -> Any:
-    """GET with automatic rate-limit back-off."""
-    for attempt in range(6):
+    """GET with automatic rate-limit back-off (waits until reset)."""
+    for attempt in range(8):
         r = session.get(url, params=params, timeout=30)
         if r.status_code == 200:
             return r.json()
-        if r.status_code == 403 and "rate limit" in r.text.lower():
+        if r.status_code in (403, 429):
             reset = int(r.headers.get("X-RateLimit-Reset", time.time() + 60))
-            wait = max(reset - time.time() + 2, 1)
-            print(f"  [rate limit] sleeping {wait:.0f}s", file=sys.stderr)
+            wait = max(reset - time.time() + 5, 5)
+            print(f"\n  [rate limit] sleeping {wait:.0f}s …", file=sys.stderr)
             time.sleep(wait)
             continue
         if r.status_code == 404:
             return None
         r.raise_for_status()
-    raise RuntimeError(f"Failed to GET {url} after retries")
+    raise RuntimeError(f"Failed GET {url} after retries")
 
 
 def _paginate(
     session: requests.Session, url: str, params: dict | None = None
 ) -> Generator[Any, None, None]:
-    """Yield items from all pages of a GitHub list endpoint."""
     p = dict(params or {})
     p.setdefault("per_page", 100)
     page = 1
@@ -95,39 +91,59 @@ def _paginate(
         data = _get(session, url, p)
         if not data:
             break
-        if isinstance(data, list):
-            yield from data
-            if len(data) < p["per_page"]:
-                break
-        else:
-            # search endpoint returns {"items": [...], "total_count": N}
-            yield from data.get("items", [])
-            if len(data.get("items", [])) < p["per_page"]:
-                break
+        items = data if isinstance(data, list) else data.get("items", [])
+        yield from items
+        if len(items) < p["per_page"]:
+            break
         page += 1
 
 
 # ---------------------------------------------------------------------------
-# Core scraping logic
+# Issue → PR linking via timeline (the reliable ACTS signal)
 # ---------------------------------------------------------------------------
 
-def _extract_issue_numbers(text: str) -> list[int]:
-    """Extract issue numbers from PR body / commit messages."""
-    return [int(m) for m in _CLOSES_RE.findall(text or "")]
+def _find_closing_prs(session: requests.Session, repo: str, issue_number: int) -> list[int]:
+    """
+    Return PR numbers of merged PRs that cross-referenced this issue.
+    Uses the timeline API — more reliable than "closes #N" body text for ACTS,
+    which uses that convention in only ~2% of fix PRs.
+    """
+    url = f"{GITHUB_API}/repos/{repo}/issues/{issue_number}/timeline"
+    # Timeline requires a special Accept header
+    old_accept = session.headers.get("Accept")
+    session.headers["Accept"] = "application/vnd.github.mockingbird-preview+json"
+    try:
+        pr_numbers: list[int] = []
+        for event in _paginate(session, url):
+            if event.get("event") != "cross-referenced":
+                continue
+            src_issue = event.get("source", {}).get("issue", {})
+            pr_info = src_issue.get("pull_request", {})
+            if pr_info.get("merged_at"):
+                pr_numbers.append(src_issue["number"])
+        return pr_numbers
+    finally:
+        session.headers["Accept"] = old_accept or "application/vnd.github+json"
 
 
-def _is_test_file(path: str) -> bool:
-    return bool(_TEST_FILE_RE.search(path))
+# ---------------------------------------------------------------------------
+# Diff helpers
+# ---------------------------------------------------------------------------
+
+def _fetch_pr_diff(session: requests.Session, repo: str, pr_number: int) -> str:
+    url = f"{GITHUB_API}/repos/{repo}/pulls/{pr_number}"
+    r = session.get(
+        url,
+        headers={**dict(session.headers), "Accept": "application/vnd.github.v3.diff"},
+        timeout=60,
+    )
+    return r.text if r.status_code == 200 else ""
 
 
 def _split_diff(diff_text: str) -> tuple[str, str]:
-    """
-    Split a unified diff into (non-test patch, test patch).
-    Returns two diff strings.
-    """
+    """Split unified diff into (non-test patch, test patch)."""
     if not diff_text:
         return "", ""
-
     blocks: list[str] = []
     current: list[str] = []
     for line in diff_text.splitlines(keepends=True):
@@ -140,63 +156,50 @@ def _split_diff(diff_text: str) -> tuple[str, str]:
     if current:
         blocks.append("".join(current))
 
-    code_parts: list[str] = []
-    test_parts: list[str] = []
+    code_parts, test_parts = [], []
     for block in blocks:
-        # Extract file path from "diff --git a/... b/..."
         m = re.search(r"^diff --git a/(\S+)", block, re.MULTILINE)
         path = m.group(1) if m else ""
-        if _is_test_file(path):
-            test_parts.append(block)
-        else:
-            code_parts.append(block)
-
+        (test_parts if _TEST_FILE_RE.search(path) else code_parts).append(block)
     return "".join(code_parts), "".join(test_parts)
 
 
-def _fetch_pr_diff(session: requests.Session, repo: str, pr_number: int) -> str:
-    """Fetch the raw unified diff for a PR."""
-    url = f"{GITHUB_API}/repos/{repo}/pulls/{pr_number}"
-    r = session.get(
-        url,
-        headers={**session.headers, "Accept": "application/vnd.github.v3.diff"},
-        timeout=60,
-    )
-    if r.status_code == 200:
-        return r.text
-    return ""
+def _has_src_changes(diff_text: str) -> bool:
+    """Return True if the diff touches at least one source file."""
+    for line in diff_text.splitlines():
+        if line.startswith("diff --git a/"):
+            m = re.search(r"diff --git a/(\S+)", line)
+            if m and _SRC_FILE_RE.search(m.group(1)):
+                return True
+    return False
 
 
-def _get_base_commit(session: requests.Session, repo: str, pr: dict) -> str:
-    """
-    The SWE-bench base_commit is the commit immediately before the PR's
-    first commit — i.e., the PR's base branch tip at the time it was opened.
-    GitHub gives us this directly as pr['base']['sha'].
-    """
-    return pr["base"]["sha"]
+# ---------------------------------------------------------------------------
+# Disk cache  (avoids re-fetching on rate-limit interruptions)
+# ---------------------------------------------------------------------------
 
+class _Cache:
+    def __init__(self, cache_dir: str | None):
+        self._dir = Path(cache_dir) if cache_dir else None
+        if self._dir:
+            self._dir.mkdir(parents=True, exist_ok=True)
 
-def _fetch_issue(session: requests.Session, repo: str, issue_number: int) -> dict | None:
-    url = f"{GITHUB_API}/repos/{repo}/issues/{issue_number}"
-    return _get(session, url)
+    def _path(self, key: str) -> Path | None:
+        if not self._dir:
+            return None
+        safe = re.sub(r"[^a-zA-Z0-9_\-]", "_", key)
+        return self._dir / f"{safe}.json"
 
+    def get(self, key: str) -> Any:
+        p = self._path(key)
+        if p and p.exists():
+            return json.loads(p.read_text())
+        return None
 
-def _fetch_issue_comments_before(
-    session: requests.Session, repo: str, issue_number: int, before_iso: str
-) -> str:
-    """Fetch all issue comments posted before *before_iso* (ISO 8601 string)."""
-    url = f"{GITHUB_API}/repos/{repo}/issues/{issue_number}/comments"
-    texts: list[str] = []
-    for comment in _paginate(session, url):
-        if comment["created_at"] < before_iso:
-            texts.append(comment["body"] or "")
-    return "\n\n".join(texts)
-
-
-def _problem_statement(issue: dict) -> str:
-    title = issue.get("title") or ""
-    body = issue.get("body") or ""
-    return f"{title}\n\n{body}".strip()
+    def set(self, key: str, value: Any) -> None:
+        p = self._path(key)
+        if p:
+            p.write_text(json.dumps(value))
 
 
 # ---------------------------------------------------------------------------
@@ -205,93 +208,134 @@ def _problem_statement(issue: dict) -> str:
 
 def scrape(
     repo: str = DEFAULT_REPO,
-    max_prs: int = 0,
-    since: str = "",
     token: str | None = None,
+    cache_dir: str | None = None,
+    require_test_patch: bool = False,
 ) -> list[dict]:
     """
-    Scrape candidate instances from *repo*.
-    Returns a list of dataset records (Stage II — no FAIL_TO_PASS yet).
+    Scrape candidate instances from *repo* using the issue-first strategy.
+    Returns a list of dataset records (no FAIL_TO_PASS / PASS_TO_PASS yet).
     """
     session = _session(token)
+    cache = _Cache(cache_dir)
     owner, name = repo.split("/")
 
-    print(f"Fetching merged PRs from {repo}…")
-    pr_params: dict[str, Any] = {"state": "closed", "sort": "updated", "direction": "desc"}
-    if since:
-        pr_params["since"] = since
+    # ---- Step 1: collect all true closed issues ----------------------------
+    print(f"Fetching all closed issues from {repo} …", file=sys.stderr)
+    cache_key_issues = f"issues_{owner}_{name}_all_closed"
+    all_issues: list[dict] = cache.get(cache_key_issues) or []
 
+    if not all_issues:
+        url = f"{GITHUB_API}/repos/{repo}/issues"
+        for item in tqdm(
+            _paginate(session, url, {"state": "closed", "sort": "created", "direction": "asc"}),
+            desc="fetching issues",
+            unit="item",
+        ):
+            if not item.get("pull_request"):   # skip PRs returned by the issues endpoint
+                all_issues.append({
+                    "number": item["number"],
+                    "title": item.get("title", ""),
+                    "body": item.get("body") or "",
+                    "created_at": item.get("created_at", ""),
+                    "html_url": item.get("html_url", ""),
+                    "labels": [l["name"] for l in item.get("labels", [])],
+                })
+        cache.set(cache_key_issues, all_issues)
+        print(f"  Found {len(all_issues)} true issues.", file=sys.stderr)
+    else:
+        print(f"  Loaded {len(all_issues)} issues from cache.", file=sys.stderr)
+
+    # ---- Step 2: for each issue, find merged PRs via timeline --------------
     candidates: list[dict] = []
-    seen_prs: set[int] = set()
-    pr_iter = _paginate(session, f"{GITHUB_API}/repos/{repo}/pulls", pr_params)
 
-    with tqdm(unit="pr", desc="scanning PRs") as bar:
-        for pr in pr_iter:
-            bar.update(1)
-            if max_prs and len(candidates) >= max_prs:
-                break
+    with tqdm(all_issues, desc="linking issues→PRs", unit="issue") as bar:
+        for issue in bar:
+            issue_num = issue["number"]
 
-            # Must be merged (not just closed)
-            if not pr.get("merged_at"):
+            # Timeline lookup (cached per issue)
+            cache_key_tl = f"timeline_{owner}_{name}_{issue_num}"
+            closing_prs: list[int] = cache.get(cache_key_tl)
+            if closing_prs is None:
+                closing_prs = _find_closing_prs(session, repo, issue_num)
+                cache.set(cache_key_tl, closing_prs)
+
+            if not closing_prs:
+                bar.set_postfix(status="no_pr")
                 continue
 
-            pr_number = pr["number"]
-            if pr_number in seen_prs:
-                continue
-            seen_prs.add(pr_number)
+            # Use the first (usually only) closing PR
+            pr_num = closing_prs[0]
 
-            # Extract issue numbers from PR body + title
-            body = (pr.get("body") or "") + "\n" + (pr.get("title") or "")
-            issue_numbers = _extract_issue_numbers(body)
-            if not issue_numbers:
-                continue
+            # Diff lookup (cached per PR)
+            cache_key_diff = f"diff_{owner}_{name}_{pr_num}"
+            diff: str | None = cache.get(cache_key_diff)
+            if diff is None:
+                diff = _fetch_pr_diff(session, repo, pr_num)
+                cache.set(cache_key_diff, diff or "")
 
-            # Fetch diff and check for test file changes
-            diff = _fetch_pr_diff(session, repo, pr_number)
-            if not diff:
+            if not diff or not _has_src_changes(diff):
+                bar.set_postfix(status="no_src")
                 continue
 
-            _, test_patch = _split_diff(diff)
-            if not test_patch:
-                continue  # No test changes → skip (SWE-bench Stage II filter)
+            code_patch, test_patch = _split_diff(diff)
 
-            code_patch, _ = _split_diff(diff)
+            if require_test_patch and not test_patch:
+                bar.set_postfix(status="no_test")
+                continue
 
-            # Use the first linked issue
-            issue_number = issue_numbers[0]
-            issue = _fetch_issue(session, repo, issue_number)
-            if issue is None or issue.get("pull_request"):
-                continue  # Linked item is itself a PR, not an issue
+            # PR metadata (cached)
+            cache_key_pr = f"pr_{owner}_{name}_{pr_num}"
+            pr_meta: dict | None = cache.get(cache_key_pr)
+            if pr_meta is None:
+                pr_meta = _get(session, f"{GITHUB_API}/repos/{repo}/pulls/{pr_num}") or {}
+                cache.set(cache_key_pr, pr_meta)
 
-            # Fetch issue comments posted before the PR's first commit
-            pr_first_commit_time = pr.get("created_at", "")
-            hints = _fetch_issue_comments_before(
-                session, repo, issue_number, pr_first_commit_time
-            )
+            if not pr_meta.get("merged_at"):
+                bar.set_postfix(status="unmerged")
+                continue
 
-            base_commit = _get_base_commit(session, repo, pr)
+            # Issue comments before the PR was created (hints)
+            pr_created = pr_meta.get("created_at", "")
+            cache_key_hints = f"hints_{owner}_{name}_{issue_num}_{pr_created[:10]}"
+            hints: str | None = cache.get(cache_key_hints)
+            if hints is None:
+                url = f"{GITHUB_API}/repos/{repo}/issues/{issue_num}/comments"
+                texts = [
+                    c["body"] or ""
+                    for c in _paginate(session, url)
+                    if c.get("created_at", "") < pr_created
+                ]
+                hints = "\n\n".join(texts)
+                cache.set(cache_key_hints, hints)
 
-            instance_id = f"{owner}__{name}-{pr_number}"
+            instance_id = f"{owner}__{name}-{issue_num}"
+            problem_statement = f"{issue['title']}\n\n{issue['body']}".strip()
+
             record = {
                 "instance_id": instance_id,
                 "repo": repo,
-                "base_commit": base_commit,
-                "problem_statement": _problem_statement(issue),
+                "base_commit": pr_meta.get("base", {}).get("sha", ""),
+                "problem_statement": problem_statement,
                 "hints_text": hints,
                 "patch": code_patch,
                 "test_patch": test_patch,
-                "FAIL_TO_PASS": [],   # populated by evaluator/harness.py
-                "PASS_TO_PASS": [],   # populated by evaluator/harness.py
-                "created_at": issue.get("created_at", ""),
-                "pr_number": pr_number,
-                "issue_number": issue_number,
-                "pr_url": pr.get("html_url", ""),
-                "issue_url": issue.get("html_url", ""),
+                "FAIL_TO_PASS": [],
+                "PASS_TO_PASS": [],
+                "created_at": issue["created_at"],
+                "pr_number": pr_num,
+                "issue_number": issue_num,
+                "pr_url": pr_meta.get("html_url", ""),
+                "issue_url": issue["html_url"],
+                "labels": issue["labels"],
+                "pr_additions": pr_meta.get("additions", 0),
+                "pr_deletions": pr_meta.get("deletions", 0),
+                "pr_changed_files": pr_meta.get("changed_files", 0),
             }
             candidates.append(record)
-            bar.set_postfix(collected=len(candidates), pr=pr_number)
+            bar.set_postfix(collected=len(candidates), issue=issue_num)
 
-    print(f"Collected {len(candidates)} candidate instances.")
+    print(f"\nCollected {len(candidates)} candidate instances.", file=sys.stderr)
     return candidates
 
 
@@ -303,27 +347,30 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Scrape ACTS GitHub for benchmark candidates")
     parser.add_argument("--repo", default=DEFAULT_REPO)
     parser.add_argument("--out", default="data/acts/candidates.jsonl")
-    parser.add_argument("--max-prs", type=int, default=0, help="Stop after N merged PRs scanned (0 = all)")
-    parser.add_argument("--since", default="", help="ISO date, e.g. 2023-01-01")
+    parser.add_argument("--cache-dir", default=".scraper_cache", help="Dir for caching API responses")
     parser.add_argument("--token", default="", help="GitHub token (overrides GITHUB_TOKEN env var)")
+    parser.add_argument("--require-test-patch", action="store_true",
+                        help="Only keep instances that include a test file change")
     args = parser.parse_args()
 
     token = args.token or os.environ.get("GITHUB_TOKEN", "")
     if not token:
-        print("WARNING: No GITHUB_TOKEN set. Rate-limited to 60 requests/hr.", file=sys.stderr)
+        print("WARNING: No GITHUB_TOKEN — rate-limited to 60 req/hr. "
+              "Provide a token for 5000 req/hr.", file=sys.stderr)
 
     instances = scrape(
         repo=args.repo,
-        max_prs=args.max_prs,
-        since=args.since,
         token=token or None,
+        cache_dir=args.cache_dir,
+        require_test_patch=args.require_test_patch,
     )
 
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
-    with open(args.out, "w") as f:
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w") as f:
         for inst in instances:
             f.write(json.dumps(inst) + "\n")
-    print(f"Written to {args.out}")
+    print(f"Written {len(instances)} instances to {out}")
 
 
 if __name__ == "__main__":
