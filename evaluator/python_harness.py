@@ -258,23 +258,33 @@ def evaluate_python_instance(
         patch_file.write_text(predicted_patch)
 
         rc, patch_out = _run(
-            ["git", "apply", "--whitespace=fix", str(patch_file)],
+            ["git", "apply", "--whitespace=fix", "--recount", str(patch_file)],
             cwd=str(repo_dir),
         )
         if rc != 0:
-            # Fallback to GNU patch
-            rc2, patch_out2 = _run(
-                ["patch", "-p1", "--input", str(patch_file)],
+            # Fallback 1: git apply with relaxed context matching
+            rc1b, patch_out1b = _run(
+                ["git", "apply", "--whitespace=fix", "--recount",
+                 "--ignore-whitespace", str(patch_file)],
                 cwd=str(repo_dir),
             )
-            if rc2 != 0:
-                result["error"] = (
-                    f"patch apply failed.\n"
-                    f"git apply: {patch_out[:300]}\n"
-                    f"patch -p1: {patch_out2[:300]}"
+            if rc1b == 0:
+                rc = 0
+            else:
+                # Fallback 2: GNU patch
+                rc2, patch_out2 = _run(
+                    ["patch", "-p1", "--input", str(patch_file)],
+                    cwd=str(repo_dir),
                 )
-                print(f"  [error] patch apply failed", file=sys.stderr)
-                return result
+                if rc2 != 0:
+                    result["error"] = (
+                        f"patch apply failed.\n"
+                        f"git apply: {patch_out[:300]}\n"
+                        f"git apply --ignore-whitespace: {patch_out1b[:300]}\n"
+                        f"patch -p1: {patch_out2[:300]}"
+                    )
+                    print(f"  [error] patch apply failed", file=sys.stderr)
+                    return result
 
         # ------------------------------------------------------------------
         # Step 6: Run pytest AFTER patch

@@ -1,7 +1,27 @@
 # SWE-P-Bench — Issues & Findings
 
-This document records bugs, gaps, and design problems discovered during the
-full-loop demo run (`run_demo.py` on `scikit-hep/awkward`).
+This document records bugs, gaps, and design problems discovered during
+full-loop demo runs (`run_demo.py` on `scikit-hep/awkward`).
+
+**Run 3 (2026-03-11, after validator added):**
+- Oracle test validator (`test_writer/validator.py`) implemented and working.
+  Retry fired on attempt 1 (tests failed both before AND after gold patch on
+  first generation); attempt 2 produced valid tests after error feedback.
+  FAIL_TO_PASS = [test_oracle_001, test_oracle_002, test_oracle_003].
+- Patch normalization for bare-`@@` format implemented in `_normalize_patch()`
+  (Issue #22). Solver output now has proper hunk headers.
+- Solver still produces wrong file paths (Issue #23): it guesses
+  `awkward/_v2/from_buffers.py` but the real file is
+  `src/awkward/operations/ak_from_buffers.py`. `git apply` fails because the
+  file does not exist at the guessed path. This is the primary remaining
+  blocker for the solver evaluation step.
+
+**Run 2 (2026-03-11, refactoring sprint):**
+- scraper/generic.py, max_instances, rate-limit abort, YAML patterns all
+  working. run_demo.py simplified significantly. Solver language-aware.
+
+**Run 1 (2026-03-08, initial full-loop):**
+- Initial findings documented below.
 
 ---
 
@@ -293,6 +313,56 @@ determinism is controlled internally — the `temperature` parameter is not expo
 
 ---
 
+---
+
+### 22. Solver outputs bare `@@` hunk separators without line numbers (compact format)
+
+**Symptom:** The solver outputs a unified diff where hunk separators appear as
+` @@` (a space-prefixed `@@` line, treated as a context line) rather than a
+proper `@@ -N,C +N,C @@` header.  Both `git apply` and `patch -p1` reject it:
+```
+git apply: error: patch with only garbage at line 4
+```
+
+**Fix:** Added `_normalize_bare_hunk_headers()` in `solver/gpt5_mini.py`.
+The normalizer detects ` @@` separators, counts context/added/removed lines
+per hunk, and inserts proper `@@ -N,C +N,C @@` headers.  `git apply --recount`
+is then used so it recalculates positions from the context even if our estimated
+line numbers are slightly off.
+
+**Location:** `solver/gpt5_mini.py:_normalize_patch()` — now dispatches to
+`_normalize_bare_hunk_headers()` when bare-@@ format is detected.
+
+---
+
+### 23. Zero-context solver guesses wrong file paths
+
+**Symptom:** The solver generates a syntactically valid patch but uses
+invented file paths (e.g. `awkward/_v2/from_buffers.py`) rather than the
+actual repo path (`src/awkward/operations/ak_from_buffers.py`).
+`git apply` fails because the file does not exist at the guessed path.
+
+**Root cause:** The zero-context solver has no access to the repo file tree,
+so it guesses paths from the issue description and convention.  For repos that
+have moved files (e.g. `awkward` migrated from `_v2/` to `src/` layout) the
+guesses are wrong.
+
+**Impact:** `evaluate_python_instance()` returns `resolved=False` with
+`error="patch apply failed"` even when the patch logic is correct.
+
+**Fix options:**
+1. Pass the repo file tree (or top-level listing) as context in the solver
+   prompt.  This alone often fixes the path guessing.
+2. Add a path-fuzzy-match fallback: if `git apply` fails, try stripping/adding
+   path components with `-p0`, `-p1`, `-p2`.
+3. Use an agentic solver that can actually browse the repo.
+
+**Location:** `solver/gpt5_mini.py` — `_SOLVER_SYSTEM` / `USER_TEMPLATE`; or
+add a post-processing step in `evaluator/python_harness.py` that retries apply
+with different `-p` levels.
+
+---
+
 ## Summary
 
 | # | Issue | Severity | Status |
@@ -317,4 +387,6 @@ determinism is controlled internally — the `temperature` parameter is not expo
 | 18 | gpt-5-mini solver outputs "*** Begin Patch" format | High | **Fixed** — `_normalize_patch()` in solver/gpt5_mini.py |
 | 19 | F-string curly quote syntax error | Low | Fixed |
 | 20 | Oracle test brittleness (design) | Medium | Open (design) |
-| 21 | test_writer/validator.py not implemented | High | Open (future work) |
+| 21 | test_writer/validator.py not implemented | High | **Fixed** — implemented with clone-once retry loop |
+| 22 | Solver outputs bare `@@` hunk separators | High | **Fixed** — `_normalize_bare_hunk_headers()` + `--recount` |
+| 23 | Zero-context solver guesses wrong file paths | High | Open — solver needs repo file tree as context |

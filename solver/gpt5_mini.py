@@ -102,32 +102,92 @@ Produce a unified diff patch that resolves this issue. Output only the raw diff.
 
 
 # ---------------------------------------------------------------------------
-# "*** Begin Patch" normaliser (Issue #18)
+# Patch normalisers (Issues #18, #22)
 # ---------------------------------------------------------------------------
+
+_BARE_HUNK_RE = re.compile(r"^ @@\s*$", re.MULTILINE)
+_VALID_HUNK_RE = re.compile(r"^@@ -\d", re.MULTILINE)
+
+
+def _normalize_bare_hunk_headers(patch: str) -> str:
+    """
+    Handle the "bare @@" compact format where the model outputs ` @@` (a
+    space-prefixed `@@`) as a section separator instead of a proper hunk
+    header like `@@ -10,5 +10,7 @@`.
+
+    We scan each hunk section, count the original/new line deltas, and
+    generate a best-effort `@@ -N,C +N,C @@` header.  With `--recount`,
+    `git apply` will then fix any inaccurate line numbers by searching for
+    the context in the file.
+    """
+    lines = patch.splitlines(keepends=True)
+    result: list[str] = []
+    i = 0
+    orig_running = 1  # estimated line in the original file
+
+    while i < len(lines):
+        line = lines[i]
+        # Detect bare @@ separator (space + @@, optionally followed by spaces)
+        if re.match(r"^ @@\s*$", line):
+            # Count the hunk body to estimate line counts
+            orig_count = 0
+            new_count = 0
+            j = i + 1
+            while j < len(lines) and not re.match(r"^ @@\s*$|^diff --git ", lines[j]):
+                c = lines[j]
+                if c.startswith("-"):
+                    orig_count += 1
+                elif c.startswith("+"):
+                    new_count += 1
+                else:
+                    # context line (space prefix or blank)
+                    orig_count += 1
+                    new_count += 1
+                j += 1
+            result.append(f"@@ -{orig_running},{orig_count} +{orig_running},{new_count} @@\n")
+            orig_running += orig_count
+            i += 1
+        else:
+            result.append(line)
+            i += 1
+
+    return "".join(result)
+
 
 def _normalize_patch(patch: str) -> str:
     """
-    Convert the OpenAI reasoning-model "*** Begin Patch" format to standard
-    unified diff, if necessary.  Returns *patch* unchanged if it is already
-    in unified diff format or in an unrecognised format.
+    Normalise LLM-generated patch output to standard unified diff.
 
-    The "*** Begin Patch" format looks like::
+    Handles two non-standard formats:
 
-        *** Begin Patch
-        *** Update File: path/to/file.py
-        @@@ line_number
-         context
-        -removed
-        +added
-         context
-        *** End Patch
+    1. OpenAI ``*** Begin Patch`` format (Issue #18):
+       Produced by reasoning models as a custom format with
+       ``*** Update File:`` / ``@@@ line`` markers.
 
-    We convert each ``*** Update File`` section into a ``diff --git`` header
-    followed by ``--- a/…`` / ``+++ b/…`` lines and the hunk(s) verbatim.
+    2. Compact ``@@`` separator format (Issue #22):
+       The model outputs a bare `` @@`` line (space + @@, no line numbers)
+       as a section separator instead of a proper ``@@ -N,N +N,N @@``
+       hunk header.  We reconstruct proper headers so ``git apply --recount``
+       can locate and apply each hunk.
     """
     stripped = patch.strip()
-    if not stripped.startswith("*** Begin Patch"):
-        return patch  # already standard unified diff (or empty)
+    if not stripped:
+        return patch
+
+    # --- Format 1: *** Begin Patch ---
+    if stripped.startswith("*** Begin Patch"):
+        return _normalize_begin_patch(stripped)
+
+    # --- Format 2: bare @@ separators (no line numbers) ---
+    # Only kick in when there are bare-@@ lines AND no valid hunk headers.
+    if _BARE_HUNK_RE.search(stripped) and not _VALID_HUNK_RE.search(stripped):
+        return _normalize_bare_hunk_headers(stripped)
+
+    return patch  # already standard unified diff (or unrecognised format)
+
+
+def _normalize_begin_patch(stripped: str) -> str:
+    """Convert ``*** Begin Patch`` format to unified diff (Issue #18)."""
 
     lines = stripped.splitlines()
     out: list[str] = []

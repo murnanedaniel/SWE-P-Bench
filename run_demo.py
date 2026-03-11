@@ -5,16 +5,17 @@ SWE-P-Bench — End-to-End Demo
 Demonstrates the full benchmark pipeline on one issue-PR pair from a
 Python HEP repo (default: scikit-hep/awkward):
 
-  1. SCRAPE   — find the first valid issue-PR pair (scraper/generic.py).
-  2. GENERATE — write N oracle tests with GPT-5-mini (knows the gold patch).
-  3. SOLVE    — generate a predicted patch with GPT-5-mini (sees issue only).
-  4. EVALUATE — run pytest before/after the predicted patch.
-  5. BONUS    — also evaluate the gold patch to sanity-check the oracle tests.
+  1. SCRAPE    — find the first valid issue-PR pair (scraper/generic.py).
+  2. GENERATE  — write N oracle tests with GPT-5-mini, validate them against
+                 the gold patch (fail→pass), retry up to 3× with feedback.
+  3. SOLVE     — generate a predicted patch with GPT-5-mini (sees issue only).
+  4. EVALUATE  — run pytest before/after the predicted patch.
 
 Results are saved under data/demo/.
 
 Usage:
     python run_demo.py [--repo OWNER/NAME] [--n-tests N] [--skip-eval]
+                       [--max-validate-attempts N]
 
 Environment:
     GITHUB_TOKEN     GitHub PAT — strongly recommended for scraping.
@@ -34,15 +35,14 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from scraper.generic import load_repo_config, scrape
-from test_writer.generator import generate_oracle_tests
+from test_writer.validator import generate_and_validate
 from evaluator.python_harness import evaluate_python_instance
 from solver.gpt5_mini import _normalize_patch
 
 load_dotenv()
 
 # ---------------------------------------------------------------------------
-# Python solver (inline — the dataset-batch solver in solver/ is language-agnostic
-# now, but for the demo we keep a concise local version here)
+# Python solver (inline)
 # ---------------------------------------------------------------------------
 
 _SOLVER_SYSTEM = """\
@@ -92,7 +92,7 @@ def _solve_python(client: OpenAI, instance: dict, model: str = "gpt-5-mini") -> 
             {"role": "system", "content": _SOLVER_SYSTEM},
             {"role": "user", "content": user_msg},
         ],
-        max_completion_tokens=8000,  # reasoning model: budget covers reasoning+output
+        max_completion_tokens=8000,
     )
     raw = response.choices[0].message.content or ""
     return _normalize_patch(raw)
@@ -106,6 +106,7 @@ def run_demo(
     repo: str = "scikit-hep/awkward",
     n_tests: int = 3,
     skip_eval: bool = False,
+    max_validate_attempts: int = 3,
 ) -> None:
     openai_key = os.environ.get("OPENAI_API_KEY", "")
     if not openai_key:
@@ -161,24 +162,51 @@ def run_demo(
 
     # ------------------------------------------------------------------ 2
     print(f"\n{sep}")
-    print("STEP 2 — GENERATING ORACLE TESTS (GPT-5-mini)")
+    print("STEP 2 — GENERATING + VALIDATING ORACLE TESTS (GPT-5-mini)")
     print(sep)
+    print(f"Generating {n_tests} tests, up to {max_validate_attempts} attempts.")
 
     oracle_file = demo_dir / "oracle_tests.py"
-    if oracle_file.exists():
+    val_result_file = demo_dir / "validation_result.json"
+
+    if oracle_file.exists() and val_result_file.exists():
         print(f"Loading cached oracle tests from {oracle_file}")
         oracle_code = oracle_file.read_text()
-        test_names = re.findall(r"^def (test_\w+)", oracle_code, re.MULTILINE)
+        val_result = json.loads(val_result_file.read_text())
     else:
-        oracle_code, test_names = generate_oracle_tests(
-            instance, n=n_tests, model="gpt-5-mini"
+        repo_cfg = load_repo_config(repo)
+        oracle_code, val_result = generate_and_validate(
+            instance,
+            n=n_tests,
+            max_attempts=max_validate_attempts,
+            model="gpt-5-mini",
+            repo_config=repo_cfg,
         )
         oracle_file.write_text(oracle_code)
+        val_result_file.write_text(json.dumps(val_result, indent=2))
 
-    print(f"\nGenerated functions: {test_names}")
+    test_names = re.findall(r"^def (test_\w+)", oracle_code, re.MULTILINE)
+    print(f"\nGenerated functions : {test_names}")
+    print(f"Validation passed   : {val_result['is_valid']}")
+    print(f"FAIL_TO_PASS        : {val_result['FAIL_TO_PASS']}")
+    print(f"Before results      : {val_result['before_results']}")
+    print(f"After results       : {val_result['after_results']}")
+    if val_result.get("error"):
+        print(f"Validation error    : {val_result['error']}")
     print(f"\nOracle test code:\n{'-'*40}")
     print(oracle_code)
     print("-" * 40)
+
+    if not val_result["is_valid"]:
+        print(
+            "\nWARNING: Oracle tests did not validate (gold patch does not make them pass). "
+            "Continuing with evaluation anyway for diagnostic purposes.",
+            file=sys.stderr,
+        )
+
+    # Update the instance with populated FAIL_TO_PASS / PASS_TO_PASS
+    instance["FAIL_TO_PASS"] = val_result["FAIL_TO_PASS"]
+    instance["PASS_TO_PASS"] = val_result["PASS_TO_PASS"]
 
     # ------------------------------------------------------------------ 3
     print(f"\n{sep}")
@@ -208,9 +236,7 @@ def run_demo(
     print(f"\n{sep}")
     print("STEP 4 — EVALUATING PREDICTED PATCH")
     print(sep)
-    print(
-        "This clones the repo, pip-installs it, then runs pytest before/after."
-    )
+    print("This clones the repo, pip-installs it, then runs pytest before/after.")
 
     repo_cfg = load_repo_config(repo)
     pred_result = evaluate_python_instance(
@@ -230,33 +256,14 @@ def run_demo(
     if pred_result.get("error"):
         print(f"Error      : {pred_result['error']}")
 
-    # ------------------------------------------------------------------ 5
-    print(f"\n{sep}")
-    print("STEP 5 — EVALUATING GOLD PATCH (sanity check)")
-    print(sep)
-    print("Verifying that the oracle tests correctly detect the gold fix.")
-
-    gold_result = evaluate_python_instance(
-        instance, oracle_code, instance["patch"], repo_config=repo_cfg
-    )
-    (demo_dir / "eval_gold.json").write_text(json.dumps(gold_result, indent=2))
-
-    print(f"\n--- Gold patch results ---")
-    print(f"Resolved   : {gold_result['resolved']}")
-    print(f"FAIL→PASS  : {gold_result['FAIL_TO_PASS']}")
-    print(f"Before     : {gold_result['before_results']}")
-    print(f"After      : {gold_result['after_results']}")
-    if gold_result.get("error"):
-        print(f"Error      : {gold_result['error']}")
-
     # ------------------------------------------------------------------ summary
     print(f"\n{sep}")
     print("SUMMARY")
     print(sep)
     oracle_quality = (
-        "GOOD (gold patch resolves oracle tests)"
-        if gold_result["resolved"]
-        else "POOR (gold patch does NOT resolve oracle tests — tests may be wrong)"
+        "VALID (gold patch makes tests fail→pass)"
+        if val_result["is_valid"]
+        else "INVALID (oracle tests did not validate against gold patch)"
     )
     solver_quality = (
         "RESOLVED" if pred_result["resolved"] else "NOT RESOLVED"
@@ -280,9 +287,18 @@ def main() -> None:
         "--skip-eval", action="store_true",
         help="Skip the pytest evaluation steps (useful for quick smoke tests)",
     )
+    ap.add_argument(
+        "--max-validate-attempts", type=int, default=3,
+        help="Max test generation+validation retries (default: 3)",
+    )
     args = ap.parse_args()
 
-    run_demo(repo=args.repo, n_tests=args.n_tests, skip_eval=args.skip_eval)
+    run_demo(
+        repo=args.repo,
+        n_tests=args.n_tests,
+        skip_eval=args.skip_eval,
+        max_validate_attempts=args.max_validate_attempts,
+    )
 
 
 if __name__ == "__main__":

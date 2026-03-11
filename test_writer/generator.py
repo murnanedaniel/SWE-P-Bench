@@ -100,6 +100,7 @@ def generate_oracle_tests(
     instance: dict,
     n: int = 3,
     model: str = MODEL,
+    feedback: str | None = None,
 ) -> tuple[str, list[str]]:
     """
     Generate N oracle test functions for the given benchmark instance.
@@ -110,6 +111,9 @@ def generate_oracle_tests(
                   Optional: hints_text.
         n:        Number of test functions to generate.
         model:    OpenAI model name.
+        feedback: Optional error feedback from a previous failed validation
+                  attempt. When provided it is appended to the user prompt so
+                  the model can correct its mistakes.
 
     Returns:
         (test_code, test_names) — test_code is a valid Python module string;
@@ -118,6 +122,8 @@ def generate_oracle_tests(
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
 
     prompt = _build_generation_prompt(instance, n)
+    if feedback:
+        prompt = prompt + "\n\n" + feedback
 
     print(f"  Calling {model} to generate {n} oracle tests…", file=sys.stderr)
     response = client.chat.completions.create(
