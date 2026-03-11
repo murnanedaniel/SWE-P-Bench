@@ -18,5 +18,5 @@
     "test_oracle_002",
     "test_oracle_003"
   ],
-  "error": "patch apply failed.\ngit apply: error: No valid patches in input (allow with \"--allow-empty\")\n\npatch -p1: patch unexpectedly ends in middle of line\npatch: **** Only garbage was found in the patch input.\n"
+  "error": "patch apply failed.\ngit apply: error: corrupt patch at line 30\n\ngit apply --ignore-whitespace: error: corrupt patch at line 30\n\npatch -p1: can't find file to patch at input line 4\nPerhaps you used the wrong -p or --strip option?\nThe text leading up to this was:\n--------------------------\n|diff --git a/awkward/_v2/from_buffers.py b/awkward/_v2/from_buffers.py\n|--- a/awkward/_v2/from_buffers.py\n|+++ b/awkward/_v2/from_buffers.py\n--------"
 }
