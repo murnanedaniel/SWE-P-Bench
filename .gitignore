@@ -11,3 +11,4 @@ build/
 data/acts/candidates.jsonl
 results/
 *.patch
+.scraper_cache/
