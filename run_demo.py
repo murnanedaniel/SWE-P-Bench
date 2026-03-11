@@ -5,7 +5,7 @@ SWE-P-Bench — End-to-End Demo
 Demonstrates the full benchmark pipeline on one issue-PR pair from a
 Python HEP repo (default: scikit-hep/awkward):
 
-  1. SCRAPE   — find the first valid issue-PR pair (uses scraper/acts.py logic).
+  1. SCRAPE   — find the first valid issue-PR pair (scraper/generic.py).
   2. GENERATE — write N oracle tests with GPT-5-mini (knows the gold patch).
   3. SOLVE    — generate a predicted patch with GPT-5-mini (sees issue only).
   4. EVALUATE — run pytest before/after the predicted patch.
@@ -33,25 +33,16 @@ from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
 
-# Local imports
-from scraper.acts import (
-    GITHUB_API,
-    _Cache,
-    _get,
-    _find_closing_prs,
-    _fetch_pr_diff,
-    _has_src_changes,
-    _paginate,
-    _session,
-    _split_diff,
-)
+from scraper.generic import load_repo_config, scrape
 from test_writer.generator import generate_oracle_tests
 from evaluator.python_harness import evaluate_python_instance
+from solver.gpt5_mini import _normalize_patch
 
 load_dotenv()
 
 # ---------------------------------------------------------------------------
-# Python-specific solver prompt (the existing solver/gpt5_mini.py is ACTS/C++)
+# Python solver (inline — the dataset-batch solver in solver/ is language-agnostic
+# now, but for the demo we keep a concise local version here)
 # ---------------------------------------------------------------------------
 
 _SOLVER_SYSTEM = """\
@@ -103,127 +94,8 @@ def _solve_python(client: OpenAI, instance: dict, model: str = "gpt-5-mini") -> 
         ],
         max_completion_tokens=8000,  # reasoning model: budget covers reasoning+output
     )
-    return response.choices[0].message.content or ""
-
-
-# ---------------------------------------------------------------------------
-# Quick single-instance scraper (stops at first valid instance)
-# ---------------------------------------------------------------------------
-
-def scrape_first_instance(
-    repo: str,
-    token: str | None = None,
-    cache_dir: str = ".scraper_cache",
-    max_issues: int = 300,
-) -> dict | None:
-    """
-    Scan closed issues (most-recently-updated first) and return the first
-    instance that has a merged PR with source-file changes.
-    Checks at most *max_issues* issues to stay fast.
-    """
-    session = _session(token)
-    cache = _Cache(cache_dir)
-    owner, name = repo.split("/")
-
-    print(f"Scanning {repo} for a valid issue-PR pair …", file=sys.stderr)
-    url = f"{GITHUB_API}/repos/{repo}/issues"
-    checked = 0
-
-    for item in _paginate(
-        session, url,
-        {"state": "closed", "sort": "updated", "direction": "desc"},
-    ):
-        if checked >= max_issues:
-            break
-        if item.get("pull_request"):
-            continue   # issues endpoint also returns PRs
-        checked += 1
-
-        issue_num = item["number"]
-        issue_title = item.get("title", "")
-
-        # --- timeline: find closing PRs ---
-        ck_tl = f"timeline_{owner}_{name}_{issue_num}"
-        closing_prs: list[int] | None = cache.get(ck_tl)
-        if closing_prs is None:
-            closing_prs = _find_closing_prs(session, repo, issue_num)
-            cache.set(ck_tl, closing_prs)
-        if not closing_prs:
-            continue
-
-        pr_num = closing_prs[0]
-
-        # --- diff ---
-        ck_diff = f"diff_{owner}_{name}_{pr_num}"
-        diff: str | None = cache.get(ck_diff)
-        if diff is None:
-            diff = _fetch_pr_diff(session, repo, pr_num)
-            cache.set(ck_diff, diff or "")
-        if not diff or not _has_src_changes(diff):
-            continue
-
-        code_patch, test_patch = _split_diff(diff)
-        if not code_patch.strip():
-            continue
-
-        # --- PR metadata ---
-        ck_pr = f"pr_{owner}_{name}_{pr_num}"
-        pr_meta: dict | None = cache.get(ck_pr)
-        if pr_meta is None:
-            pr_meta = _get(session, f"{GITHUB_API}/repos/{repo}/pulls/{pr_num}") or {}
-            cache.set(ck_pr, pr_meta)
-        if not pr_meta.get("merged_at"):
-            continue
-
-        # --- hints (issue comments before the PR) ---
-        pr_created = pr_meta.get("created_at", "")
-        ck_hints = f"hints_{owner}_{name}_{issue_num}_{pr_created[:10]}"
-        hints: str | None = cache.get(ck_hints)
-        if hints is None:
-            texts = [
-                c["body"] or ""
-                for c in _paginate(
-                    session,
-                    f"{GITHUB_API}/repos/{repo}/issues/{issue_num}/comments",
-                )
-                if c.get("created_at", "") < pr_created
-            ]
-            hints = "\n\n".join(texts)
-            cache.set(ck_hints, hints)
-
-        instance_id = f"{owner}__{name}-{issue_num}"
-        problem_statement = f"{item['title']}\n\n{item.get('body') or ''}".strip()
-
-        print(
-            f"  Found: #{issue_num} '{issue_title}' -> PR #{pr_num}",
-            file=sys.stderr,
-        )
-        return {
-            "instance_id": instance_id,
-            "repo": repo,
-            "base_commit": pr_meta.get("base", {}).get("sha", ""),
-            "problem_statement": problem_statement,
-            "hints_text": hints,
-            "patch": code_patch,
-            "test_patch": test_patch,
-            "FAIL_TO_PASS": [],
-            "PASS_TO_PASS": [],
-            "created_at": item.get("created_at", ""),
-            "pr_number": pr_num,
-            "issue_number": issue_num,
-            "pr_url": pr_meta.get("html_url", ""),
-            "issue_url": item.get("html_url", ""),
-            "labels": [lb["name"] for lb in item.get("labels", [])],
-            "pr_additions": pr_meta.get("additions", 0),
-            "pr_deletions": pr_meta.get("deletions", 0),
-            "pr_changed_files": pr_meta.get("changed_files", 0),
-        }
-
-    print(
-        f"  No valid instance in first {max_issues} issues.",
-        file=sys.stderr,
-    )
-    return None
+    raw = response.choices[0].message.content or ""
+    return _normalize_patch(raw)
 
 
 # ---------------------------------------------------------------------------
@@ -259,13 +131,22 @@ def run_demo(
         token = os.environ.get("GITHUB_TOKEN")
         if not token:
             print(
-                "WARNING: GITHUB_TOKEN not set — scraping rate-limited to 60 req/hr.",
+                "WARNING: GITHUB_TOKEN not set — rate-limited to 60 req/hr "
+                "(will abort on first hit).",
                 file=sys.stderr,
             )
-        instance = scrape_first_instance(repo, token=token)
-        if instance is None:
+        repo_cfg = load_repo_config(repo)
+        instances = scrape(
+            repo=repo,
+            token=token,
+            cache_dir=".scraper_cache",
+            max_instances=1,
+            config=repo_cfg,
+        )
+        if not instances:
             print("ERROR: Could not find a valid instance.", file=sys.stderr)
             sys.exit(1)
+        instance = instances[0]
         instance_file.write_text(json.dumps(instance, indent=2))
 
     print(f"\nInstance  : {instance['instance_id']}")
@@ -331,7 +212,10 @@ def run_demo(
         "This clones the repo, pip-installs it, then runs pytest before/after."
     )
 
-    pred_result = evaluate_python_instance(instance, oracle_code, predicted_patch)
+    repo_cfg = load_repo_config(repo)
+    pred_result = evaluate_python_instance(
+        instance, oracle_code, predicted_patch, repo_config=repo_cfg
+    )
     (demo_dir / "eval_predicted.json").write_text(
         json.dumps(pred_result, indent=2)
     )
@@ -352,7 +236,9 @@ def run_demo(
     print(sep)
     print("Verifying that the oracle tests correctly detect the gold fix.")
 
-    gold_result = evaluate_python_instance(instance, oracle_code, instance["patch"])
+    gold_result = evaluate_python_instance(
+        instance, oracle_code, instance["patch"], repo_config=repo_cfg
+    )
     (demo_dir / "eval_gold.json").write_text(json.dumps(gold_result, indent=2))
 
     print(f"\n--- Gold patch results ---")
@@ -368,12 +254,12 @@ def run_demo(
     print("SUMMARY")
     print(sep)
     oracle_quality = (
-        "✓ GOOD (gold patch resolves oracle tests)"
+        "GOOD (gold patch resolves oracle tests)"
         if gold_result["resolved"]
-        else "✗ POOR (gold patch does NOT resolve oracle tests — tests may be wrong)"
+        else "POOR (gold patch does NOT resolve oracle tests — tests may be wrong)"
     )
     solver_quality = (
-        "✓ RESOLVED" if pred_result["resolved"] else "✗ NOT RESOLVED"
+        "RESOLVED" if pred_result["resolved"] else "NOT RESOLVED"
     )
     print(f"Oracle tests  : {oracle_quality}")
     print(f"GPT-5-mini    : {solver_quality}")

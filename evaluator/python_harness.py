@@ -3,7 +3,7 @@ Python repo evaluator for SWE-P-Bench.
 
 Evaluates a predicted patch by running pytest before and after applying it:
   1. Clone repo at base_commit into a temporary directory.
-  2. Install the library with pip (tries several extras fallbacks).
+  2. Install the library with pip (uses repos.yml install_extras when available).
   3. Write oracle tests to a temp test file in the cloned repo.
   4. Run pytest BEFORE the patch → capture which tests fail/pass.
   5. Apply the predicted patch with `git apply` (fallback to `patch -p1`).
@@ -11,17 +11,23 @@ Evaluates a predicted patch by running pytest before and after applying it:
   7. Compute FAIL_TO_PASS and PASS_TO_PASS lists.
 
 Unlike the ACTS Docker evaluator, no Docker or CMake is needed for pure Python
-repos. Cloning happens over HTTPS so GITHUB_TOKEN is not required here, but
-it helps avoid rate limits if many instances are evaluated in parallel.
+repos. Cloning happens over HTTPS so GITHUB_TOKEN is not required here.
 
 Usage:
     from evaluator.python_harness import evaluate_python_instance
     result = evaluate_python_instance(instance, oracle_code, predicted_patch)
+
+    # With repos.yml config for better install_extras:
+    from scraper.generic import load_repo_config
+    cfg = load_repo_config(instance["repo"])
+    result = evaluate_python_instance(instance, oracle_code, predicted_patch,
+                                      repo_config=cfg)
 """
 
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -53,6 +59,29 @@ def _run(
         return 1, str(e)
 
 
+def _find_pytest_cmd() -> list[str]:
+    """Return a working pytest invocation.
+
+    Tries ``sys.executable -m pytest`` first (correct when pytest is installed
+    in the same virtual environment as the harness).  Falls back to the
+    ``pytest`` binary on PATH, which is correct when the harness runs under a
+    different interpreter than the repo under test.
+
+    Raises RuntimeError if pytest cannot be found at all.
+    """
+    rc, _ = _run([sys.executable, "-m", "pytest", "--version"], timeout=10)
+    if rc == 0:
+        return [sys.executable, "-m", "pytest"]
+
+    pytest_bin = shutil.which("pytest")
+    if pytest_bin:
+        return [pytest_bin]
+
+    raise RuntimeError(
+        "pytest not found. Install it with: pip install pytest"
+    )
+
+
 def _parse_pytest_output(output: str) -> dict[str, bool]:
     """
     Parse pytest -v output into {test_name: passed}.
@@ -70,17 +99,30 @@ def _parse_pytest_output(output: str) -> dict[str, bool]:
     return results
 
 
-def _install_repo(repo_dir: Path) -> tuple[bool, str]:
+def _install_repo(
+    repo_dir: Path,
+    repo_config: dict | None = None,
+) -> tuple[bool, str]:
     """
     Install the repo with pip, trying several extras combinations.
+
+    If *repo_config* is provided and contains ``install_extras``, those are
+    used as the list of extras to try.  Otherwise falls back to the hardcoded
+    defaults.
+
     Returns (success, last_output).
     """
+    # Build the extras list from config or defaults
+    if repo_config and repo_config.get("install_extras"):
+        extras_list = repo_config["install_extras"]
+    else:
+        extras_list = [".[dev,test]", ".[dev]", ".[test]", "."]
+
     attempts = [
-        [sys.executable, "-m", "pip", "install", "-e", ".[dev,test]", "-q"],
-        [sys.executable, "-m", "pip", "install", "-e", ".[dev]", "-q"],
-        [sys.executable, "-m", "pip", "install", "-e", ".[test]", "-q"],
-        [sys.executable, "-m", "pip", "install", "-e", ".", "-q"],
+        [sys.executable, "-m", "pip", "install", "-e", extras, "-q"]
+        for extras in extras_list
     ]
+
     last_out = ""
     for cmd in attempts:
         rc, out = _run(cmd, cwd=str(repo_dir), timeout=600)
@@ -98,6 +140,7 @@ def evaluate_python_instance(
     instance: dict,
     oracle_test_code: str,
     predicted_patch: str,
+    repo_config: dict | None = None,
 ) -> dict:
     """
     Evaluate *predicted_patch* against *oracle_test_code* for *instance*.
@@ -106,6 +149,8 @@ def evaluate_python_instance(
         instance:          SWE-P-Bench record with 'repo' and 'base_commit'.
         oracle_test_code:  Python pytest module string (the oracle tests).
         predicted_patch:   Unified diff to evaluate.
+        repo_config:       Optional per-repo config from repos.yml (used for
+                           install_extras).
 
     Returns:
         Result dict with keys:
@@ -131,6 +176,14 @@ def evaluate_python_instance(
         "oracle_tests": [],
         "error": None,
     }
+
+    # Resolve pytest command once (raises if not found)
+    try:
+        pytest_cmd = _find_pytest_cmd()
+    except RuntimeError as exc:
+        result["error"] = str(exc)
+        print(f"  [error] {exc}", file=sys.stderr)
+        return result
 
     with tempfile.TemporaryDirectory(prefix="swepbench_") as tmpdir:
         repo_dir = Path(tmpdir) / "repo"
@@ -162,7 +215,7 @@ def evaluate_python_instance(
         # Step 2: Install
         # ------------------------------------------------------------------
         print(f"  Installing {repo} …", file=sys.stderr)
-        install_ok, install_out = _install_repo(repo_dir)
+        install_ok, install_out = _install_repo(repo_dir, repo_config=repo_config)
         result["install_ok"] = install_ok
         if not install_ok:
             result["error"] = f"pip install failed: {install_out[-500:]}"
@@ -183,8 +236,7 @@ def evaluate_python_instance(
         # ------------------------------------------------------------------
         print(f"  pytest BEFORE patch …", file=sys.stderr)
         rc, before_out = _run(
-            [
-                sys.executable, "-m", "pytest",
+            pytest_cmd + [
                 str(test_file), "-v", "--tb=short", "--no-header",
                 "-p", "no:cacheprovider",
             ],
@@ -229,8 +281,7 @@ def evaluate_python_instance(
         # ------------------------------------------------------------------
         print(f"  pytest AFTER patch …", file=sys.stderr)
         rc, after_out = _run(
-            [
-                sys.executable, "-m", "pytest",
+            pytest_cmd + [
                 str(test_file), "-v", "--tb=short", "--no-header",
                 "-p", "no:cacheprovider",
             ],

@@ -297,24 +297,24 @@ determinism is controlled internally — the `temperature` parameter is not expo
 
 | # | Issue | Severity | Status |
 |---|-------|----------|--------|
-| 1 | No GITHUB_TOKEN = rate limit hang | Critical | Open |
-| 2 | Scraper fetches all issues before returning first | High | Workaround in run_demo.py |
-| 3 | test_writer/ package missing | High | Fixed in this PR |
-| 4 | repos.yml missing | High | Fixed in this PR |
+| 1 | No GITHUB_TOKEN = rate limit hang | Critical | **Fixed** — abort with reset timestamp instead of sleeping |
+| 2 | Scraper fetches all issues before returning first | High | **Fixed** — `scrape(max_instances=N)` param; workaround in run_demo.py removed |
+| 3 | test_writer/ package missing | High | Fixed |
+| 4 | repos.yml missing | High | Fixed |
 | 5 | data/ directory not created | Medium | Fixed in run_demo.py |
-| 6 | solver filename/docstring mismatch | Low | Open (cosmetic) |
-| 7 | Solver is C++ / ACTS specific | High | Workaround in run_demo.py |
-| 8 | Evaluator is Docker / ACTS specific | High | Fixed in this PR |
-| 9 | _split_diff() non-configurable regexes | Medium | Open |
-| 10 | evaluate_patch_mode() hardcoded GitHub URL | Medium | Open |
-| 11 | DOCKER_EVAL_SCRIPT runs all tests | Medium | Open |
-| 12 | requirements.txt missing pyyaml | Low | Fixed in this PR |
-| 13 | sys.executable lacks pytest (python_harness) | High | Workaround: pip install pytest |
-| 14 | Oracle test API hallucination (to_buffers order) | High | Workaround: manual correction |
-| 15 | max_tokens not supported by gpt-5-mini | High | Fixed in this PR |
-| 16 | gpt-5-mini reasoning model needs ≥5000 tokens | High | Fixed in this PR |
-| 17 | temperature not supported by gpt-5-mini | High | Fixed in this PR |
-| 18 | gpt-5-mini solver outputs "*** Begin Patch" format | High | Open |
-| 19 | F-string curly quote syntax error | Low | Fixed in this PR |
+| 6 | solver filename/docstring mismatch | Low | **Fixed** — docstring + CLI updated to gpt5_mini |
+| 7 | Solver is C++ / ACTS specific | High | **Fixed** — language-aware system prompts via repos.yml |
+| 8 | Evaluator is Docker / ACTS specific | High | Fixed (python_harness.py) |
+| 9 | _split_diff() non-configurable regexes | Medium | **Fixed** — `src_pat`/`test_pat` params, loaded from repos.yml |
+| 10 | evaluate_patch_mode() hardcoded GitHub URL | Medium | Open (ACTS/Docker path, not used in demo) |
+| 11 | DOCKER_EVAL_SCRIPT runs all tests | Medium | Open (ACTS/Docker path, not used in demo) |
+| 12 | requirements.txt missing pyyaml | Low | Fixed |
+| 13 | sys.executable lacks pytest (python_harness) | High | **Fixed** — `_find_pytest_cmd()` with PATH fallback |
+| 14 | Oracle test API hallucination (to_buffers order) | High | Open (needs test_writer/validator.py) |
+| 15 | max_tokens not supported by gpt-5-mini | High | Fixed |
+| 16 | gpt-5-mini reasoning model needs ≥5000 tokens | High | Fixed |
+| 17 | temperature not supported by gpt-5-mini | High | **Fixed** — `temperature` param and `--temperature` CLI arg removed |
+| 18 | gpt-5-mini solver outputs "*** Begin Patch" format | High | **Fixed** — `_normalize_patch()` in solver/gpt5_mini.py |
+| 19 | F-string curly quote syntax error | Low | Fixed |
 | 20 | Oracle test brittleness (design) | Medium | Open (design) |
-| 21 | test_writer/validator.py not implemented | High | Open |
+| 21 | test_writer/validator.py not implemented | High | Open (future work) |
