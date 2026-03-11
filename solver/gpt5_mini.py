@@ -86,8 +86,7 @@ def solve_instance(client: OpenAI, instance: dict, temperature: float = 0.2) -> 
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": build_prompt(instance)},
         ],
-        temperature=temperature,
-        max_tokens=4096,
+        max_completion_tokens=8000,  # reasoning model: budget covers reasoning+output
     )
     return response.choices[0].message.content or ""
 
