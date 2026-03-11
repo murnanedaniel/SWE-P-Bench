@@ -167,6 +167,101 @@ def _fix_patch_paths(patch_text: str, repo_dir: Path) -> str | None:
     return corrected
 
 
+def _find_context_line(context_lines: list[str], file_lines: list[str]) -> int | None:
+    """Return 0-indexed start of the first run of file lines matching context_lines.
+
+    Strips leading/trailing whitespace when comparing so indentation
+    differences don't cause false negatives.
+    """
+    if not context_lines:
+        return None
+    stripped_ctx = [c.strip() for c in context_lines]
+    stripped_file = [f.strip() for f in file_lines]
+    n = len(stripped_ctx)
+    for i in range(len(stripped_file) - n + 1):
+        if stripped_file[i : i + n] == stripped_ctx:
+            return i
+    return None
+
+
+def _correct_hunk_positions(patch_text: str, repo_dir: Path) -> str:
+    """Correct wrong line positions in unified diff hunk headers.
+
+    When patch normalization converts bare-@@ separators it assigns
+    sequential positions starting from line 1.  If the actual context
+    is deeper in the file (e.g. inside a function at line 200),
+    git-apply/patch cannot find it.
+
+    This function re-parses each hunk, extracts the leading context lines,
+    searches for them in the actual on-disk file, and rewrites the
+    ``@@ -N,M +N,M @@`` header with the correct start line.
+
+    Returns the corrected patch string unchanged if correction is not
+    possible (file missing, context not found, no hunk headers, etc.).
+    """
+    _HUNK_RE = re.compile(
+        r"^(?P<hdr>@@ -(?P<os>\d+)(?:,(?P<oc>\d+))? \+(?P<ns>\d+)(?:,(?P<nc>\d+))? @@[^\n]*\n)",
+        re.MULTILINE,
+    )
+    _DIFF_RE = re.compile(r"^diff --git a/(\S+)", re.MULTILINE)
+
+    # Split into per-file diff sections
+    sections = re.split(r"(?=^diff --git )", patch_text, flags=re.MULTILINE)
+    out_sections: list[str] = []
+
+    for section in sections:
+        if not section.strip():
+            continue
+        m_path = _DIFF_RE.match(section)
+        if not m_path:
+            out_sections.append(section)
+            continue
+
+        rel_path = m_path.group(1)
+        file_path = repo_dir / rel_path
+        if not file_path.exists():
+            out_sections.append(section)
+            continue
+
+        file_lines = file_path.read_text(errors="replace").splitlines()
+
+        def replace_hunk(m: re.Match) -> str:  # noqa: E306
+            orig_start = int(m.group("os"))
+            orig_count = int(m.group("oc")) if m.group("oc") is not None else 1
+            new_count  = int(m.group("nc")) if m.group("nc") is not None else 1
+
+            # Extract context lines that follow this hunk header (up to next header)
+            hunk_start = m.end()
+            next_hdr = _HUNK_RE.search(section, hunk_start)
+            hunk_body = section[hunk_start : next_hdr.start() if next_hdr else len(section)]
+
+            ctx_lines = [
+                ln[1:]  # strip the leading space
+                for ln in hunk_body.splitlines()
+                if ln.startswith(" ")
+            ]
+            if not ctx_lines:
+                return m.group(0)  # no context to search on
+
+            found = _find_context_line(ctx_lines, file_lines)
+            if found is None:
+                return m.group(0)  # context not found; keep original
+
+            # found is 0-indexed position of first context line
+            # orig_start should be 1-indexed
+            corrected_start = found + 1
+            if corrected_start == orig_start:
+                return m.group(0)  # already correct
+
+            suffix = m.group("hdr").split("@@", 2)[2].rstrip("\n")  # trailing annotation
+            return f"@@ -{corrected_start},{orig_count} +{corrected_start},{new_count} @@{suffix}\n"
+
+        corrected_section = _HUNK_RE.sub(replace_hunk, section)
+        out_sections.append(corrected_section)
+
+    return "".join(out_sections)
+
+
 def _parse_pytest_output(output: str) -> dict[str, bool]:
     """
     Parse pytest -v output into {test_name: passed}.
@@ -342,6 +437,9 @@ def evaluate_python_instance(
         # Normalise non-standard patch formats (bare-@@ separators, *** Begin Patch)
         predicted_patch = _normalize_patch(predicted_patch)
 
+        # Correct wrong hunk positions (normalization always starts from line 1)
+        predicted_patch = _correct_hunk_positions(predicted_patch, repo_dir)
+
         patch_file = Path(tmpdir) / "predicted.patch"
         patch_file.write_text(predicted_patch)
 
@@ -350,18 +448,31 @@ def evaluate_python_instance(
             cwd=str(repo_dir),
         )
         if rc != 0:
-            # Fallback 1: git apply with relaxed whitespace matching
+            # Fallback 1: git apply with 3-way merge (handles wrong line positions)
             rc1b, patch_out1b = _run(
                 ["git", "apply", "--whitespace=fix", "--recount",
-                 "--ignore-whitespace", str(patch_file)],
+                 "--3way", str(patch_file)],
                 cwd=str(repo_dir),
             )
             if rc1b == 0:
                 rc = 0
             else:
-                # Fallback 2: GNU patch
+                # Fallback 2: git apply with relaxed whitespace matching
+                rc1c, patch_out1c = _run(
+                    ["git", "apply", "--whitespace=fix", "--recount",
+                     "--ignore-whitespace", str(patch_file)],
+                    cwd=str(repo_dir),
+                )
+                if rc1c == 0:
+                    rc = 0
+                    patch_out1b = patch_out1c
+                else:
+                    patch_out1b = patch_out1b + "\n" + patch_out1c
+
+            if rc != 0:
+                # Fallback 3: GNU patch with fuzz
                 rc2, patch_out2 = _run(
-                    ["patch", "-p1", "--input", str(patch_file)],
+                    ["patch", "-p1", "--fuzz=3", "--input", str(patch_file)],
                     cwd=str(repo_dir),
                 )
                 if rc2 == 0:

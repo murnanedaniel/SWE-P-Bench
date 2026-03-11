@@ -71,8 +71,10 @@ Rules:
   If the issue text or API name gives a clue (e.g. `ak.from_buffers`), derive the
   file path as `src/<package>/operations/<module>.py` or similar.
   Never invent legacy `_v2/` or `_v3/` subpaths that may have been removed.
-- When source files are provided in the prompt, use them verbatim for context lines.
-  Never invent or modify code that is not shown in the source files.
+- When source files are provided, each line is prefixed with its line number.
+  Use those numbers to write correct @@ -N,M +N,M @@ hunk headers.
+  Copy context and removed lines VERBATIM from the numbered source.
+  Never invent code not shown in the source files.
 """
 
 _SYSTEM_CPP = """\
@@ -190,10 +192,23 @@ def _normalize_patch(patch: str) -> str:
     if stripped.startswith("*** Begin Patch"):
         return _normalize_begin_patch(stripped)
 
-    # --- Format 2: bare @@ separators (no line numbers) ---
+    # --- Format 2a: space-prefixed hunk headers with real line numbers ---
+    # Model outputs " @@ -N,M +N,M @@" (leading space) instead of "@@ -N,M +N,M @@".
+    _SPACED_HUNK_RE = re.compile(r"^ @@ -\d+", re.MULTILINE)
+    if _SPACED_HUNK_RE.search(stripped):
+        result = re.sub(r"^ @@", "@@", stripped, flags=re.MULTILINE)
+        if result and not result.endswith("\n"):
+            result += "\n"
+        return result
+
+    # --- Format 2b: bare @@ separators (no line numbers) ---
     # Only kick in when there are bare-@@ lines AND no valid hunk headers.
     if _BARE_HUNK_RE.search(stripped) and not _VALID_HUNK_RE.search(stripped):
-        return _normalize_bare_hunk_headers(stripped)
+        result = _normalize_bare_hunk_headers(stripped)
+        # Ensure the patch ends with a newline (patch/git apply require it).
+        if result and not result.endswith("\n"):
+            result += "\n"
+        return result
 
     return patch  # already standard unified diff (or unrecognised format)
 
@@ -334,12 +349,18 @@ def build_prompt(
     if source_context:
         file_blocks: list[str] = []
         for path, content in source_context.items():
-            lang = "py" if path.endswith(".py") else ""
-            file_blocks.append(f"### `{path}`\n\n```{lang}\n{content}```")
+            # Number every line so the model can write exact @@ -N,M +N,M @@ headers.
+            numbered = "\n".join(
+                f"{i + 1:4}: {line}"
+                for i, line in enumerate(content.splitlines())
+            )
+            file_blocks.append(f"### `{path}`\n\n```\n{numbered}\n```")
         files_body = "\n\n".join(file_blocks)
         source_files_section = (
             "\n## Source Files\n\n"
-            "Use these files as ground truth — do NOT invent code that is not here.\n\n"
+            "Each line is prefixed with its 1-based line number followed by ': '.\n"
+            "Use these exact line numbers in your unified diff hunk headers\n"
+            "(e.g. @@ -278,14 +278,19 @@). Do NOT invent code not shown here.\n\n"
             f"{files_body}\n"
         )
     else:

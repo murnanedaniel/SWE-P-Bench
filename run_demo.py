@@ -37,69 +37,9 @@ from openai import OpenAI
 from scraper.generic import load_repo_config, scrape
 from test_writer.validator import generate_and_validate
 from evaluator.python_harness import evaluate_python_instance
-from solver.gpt5_mini import _normalize_patch
+from solver.gpt5_mini import solve_instance
 
 load_dotenv()
-
-# ---------------------------------------------------------------------------
-# Python solver (inline)
-# ---------------------------------------------------------------------------
-
-_SOLVER_SYSTEM = """\
-You are an expert Python software engineer working on scientific / HEP Python libraries.
-
-Your task: given a GitHub issue description, produce a minimal unified diff patch \
-(git diff format) that resolves the issue in the described repository.
-
-Rules:
-- Output ONLY the raw unified diff, nothing else.
-- Do not include explanations, prose, or code fences.
-- The diff must apply cleanly with `git apply` or `patch -p1`.
-- Keep changes minimal — fix only what the issue describes.
-- Match the existing code style.
-- File paths MUST follow the actual modern layout of the repo.
-  Most scientific Python packages use the `src/<package>/` layout.
-  Derive paths from the issue text and API name (e.g. `ak.from_buffers` →
-  `src/awkward/operations/ak_from_buffers.py`).
-  Never invent legacy `_v2/` or `_v3/` subpaths.
-"""
-
-_SOLVER_USER = """\
-## Repository
-{repo}
-
-## Issue
-{problem_statement}
-
-{hints_section}
-
-## Task
-Produce a unified diff patch that resolves this issue.
-Output only the raw diff, no explanations.
-"""
-
-
-def _solve_python(client: OpenAI, instance: dict, model: str = "gpt-5-mini") -> str:
-    """Call GPT-5-mini to generate a predicted patch (no gold patch shown)."""
-    hints = instance.get("hints_text", "").strip()
-    hints_section = f"## Hints / Discussion\n\n{hints}" if hints else ""
-    user_msg = _SOLVER_USER.format(
-        repo=instance.get("repo", ""),
-        problem_statement=instance.get("problem_statement", ""),
-        hints_section=hints_section,
-    ).strip()
-
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": _SOLVER_SYSTEM},
-            {"role": "user", "content": user_msg},
-        ],
-        max_completion_tokens=8000,
-    )
-    raw = response.choices[0].message.content or ""
-    return _normalize_patch(raw)
-
 
 # ---------------------------------------------------------------------------
 # Main demo
@@ -216,13 +156,14 @@ def run_demo(
     print("STEP 3 — SOLVING (GPT-5-mini, issue description only)")
     print(sep)
 
+    repo_cfg = load_repo_config(repo)
     patch_file = demo_dir / "predicted_patch.patch"
     if patch_file.exists():
         print(f"Loading cached prediction from {patch_file}")
         predicted_patch = patch_file.read_text()
     else:
-        print("Calling GPT-5-mini solver (no gold patch shown) …")
-        predicted_patch = _solve_python(client, instance)
+        print("Calling GPT-5-mini solver (with source file context) …")
+        predicted_patch = solve_instance(client, instance, repo_config=repo_cfg)
         patch_file.write_text(predicted_patch)
 
     print(f"\nPredicted patch ({len(predicted_patch)} chars):\n{'-'*40}")
