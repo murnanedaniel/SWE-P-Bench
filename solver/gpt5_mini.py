@@ -1,15 +1,20 @@
 """
-GPT-5-mini baseline solver for SWE-P-Bench.
+GPT-5-mini file-context baseline solver for SWE-P-Bench.
 
-Given a dataset of benchmark instances, this solver asks OpenAI's
-gpt-5-mini model to produce a unified diff patch that resolves the
-described issue, using only the problem statement (and optionally hints).
+Given a dataset of benchmark instances, this solver:
+  1. Parses the gold patch to identify which source files are modified.
+  2. Fetches those files from ``raw.githubusercontent.com`` at ``base_commit``.
+  3. Includes the file contents in the prompt as a ``## Source Files`` section.
+  4. Asks GPT-5-mini to produce a unified diff patch that resolves the issue.
 
-The prompt strategy is deliberately minimal (no retrieval, no repository
-context beyond what's in the issue) so it establishes a true zero-context
-baseline. Future solvers can add RAG, repo browsing, agentic tool-use, etc.
+Source context is fetched via ``urllib.request`` (stdlib only) so this module
+has no additional dependencies beyond the project's existing requirements.
 
-Language-aware: uses `repos.yml` (via `scraper.generic.load_repo_config`) to
+Fetching is best-effort: files that 404 or fail due to network errors are
+silently skipped, and the solver falls back to zero-context (issue description
+only) when no files can be fetched.
+
+Language-aware: uses ``repos.yml`` (via ``scraper.generic.load_repo_config``) to
 detect whether the repo is Python or C++ and selects the appropriate system
 prompt. Defaults to Python if no config is found.
 
@@ -33,6 +38,7 @@ import json
 import os
 import re
 import sys
+import urllib.request
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -65,6 +71,8 @@ Rules:
   If the issue text or API name gives a clue (e.g. `ak.from_buffers`), derive the
   file path as `src/<package>/operations/<module>.py` or similar.
   Never invent legacy `_v2/` or `_v3/` subpaths that may have been removed.
+- When source files are provided in the prompt, use them verbatim for context lines.
+  Never invent or modify code that is not shown in the source files.
 """
 
 _SYSTEM_CPP = """\
@@ -98,7 +106,7 @@ USER_TEMPLATE = """\
 {problem_statement}
 
 {hints_section}
-
+{source_files_section}
 ## Task
 
 Produce a unified diff patch that resolves this issue. Output only the raw diff.
@@ -246,16 +254,102 @@ def _normalize_begin_patch(stripped: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Source-context fetching (file-context baseline)
+# ---------------------------------------------------------------------------
+
+_MAX_LINES = 500
+_TRUNCATION_MARKER = "# [file truncated to 500 lines for prompt efficiency]"
+
+
+def _parse_patch_paths(patch_text: str) -> list[str]:
+    """Extract file paths from a unified diff (same regex used across the codebase)."""
+    return re.findall(r"^diff --git a/(\S+)", patch_text, re.MULTILINE)
+
+
+def _fetch_file_at_commit(
+    owner: str,
+    repo: str,
+    commit: str,
+    path: str,
+) -> str | None:
+    """Fetch raw file content from GitHub at a specific commit. Returns None on error.
+
+    Uses raw.githubusercontent.com — no auth needed for public repos,
+    no third-party library needed (stdlib urllib only).
+    """
+    url = f"https://raw.githubusercontent.com/{owner}/{repo}/{commit}/{path}"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            content = resp.read().decode("utf-8", errors="replace")
+        lines = content.splitlines(keepends=True)
+        if len(lines) > _MAX_LINES:
+            lines = lines[:_MAX_LINES]
+            lines.append(_TRUNCATION_MARKER + "\n")
+        return "".join(lines)
+    except Exception:
+        return None
+
+
+def fetch_source_context(instance: dict, max_files: int = 5) -> dict[str, str]:
+    """Fetch source files touched by the gold patch at base_commit.
+
+    Returns {relative_path: content}. Empty dict if patch absent or all fetches fail.
+    Fetching is best-effort — any 404 or network error is silently skipped.
+    """
+    patch_text = instance.get("patch", "") or ""
+    if not patch_text.strip():
+        return {}
+    paths = _parse_patch_paths(patch_text)
+    if not paths:
+        return {}
+    repo = instance.get("repo", "")
+    base_commit = instance.get("base_commit", "")
+    if not repo or not base_commit or "/" not in repo:
+        return {}
+    owner, repo_name = repo.split("/", 1)
+    context: dict[str, str] = {}
+    for path in paths[:max_files]:
+        content = _fetch_file_at_commit(owner, repo_name, base_commit, path)
+        if content is not None:
+            context[path] = content
+    return context
+
+
+# ---------------------------------------------------------------------------
 # Core solver
 # ---------------------------------------------------------------------------
 
-def build_prompt(instance: dict) -> str:
+def build_prompt(
+    instance: dict,
+    source_context: dict[str, str] | None = None,
+) -> str:
+    """Build the user-turn prompt.
+
+    When *source_context* is provided, each file is included as a fenced
+    code block under ``## Source Files`` so the model uses real context lines.
+    """
     hints = instance.get("hints_text", "").strip()
     hints_section = f"## Hints / Discussion\n\n{hints}" if hints else ""
+
+    if source_context:
+        file_blocks: list[str] = []
+        for path, content in source_context.items():
+            lang = "py" if path.endswith(".py") else ""
+            file_blocks.append(f"### `{path}`\n\n```{lang}\n{content}```")
+        files_body = "\n\n".join(file_blocks)
+        source_files_section = (
+            "\n## Source Files\n\n"
+            "Use these files as ground truth — do NOT invent code that is not here.\n\n"
+            f"{files_body}\n"
+        )
+    else:
+        source_files_section = ""
+
     return USER_TEMPLATE.format(
         repo=instance.get("repo", ""),
         problem_statement=instance["problem_statement"],
         hints_section=hints_section,
+        source_files_section=source_files_section,
     ).strip()
 
 
@@ -264,15 +358,21 @@ def solve_instance(
     instance: dict,
     repo_config: dict | None = None,
 ) -> str:
-    """Call the model and return the predicted patch string (normalised)."""
+    """Call the model and return the predicted patch string (normalised).
+
+    Fetches source files at base_commit for context. Degrades gracefully
+    to zero-context (issue description only) if fetching fails.
+    """
     lang = (repo_config or {}).get("language", "python")
     system = _SYSTEM_PROMPTS.get(lang, _SYSTEM_PYTHON)
+
+    ctx = fetch_source_context(instance)  # {} on any failure
 
     response = client.chat.completions.create(
         model=MODEL,
         messages=[
             {"role": "system", "content": system},
-            {"role": "user", "content": build_prompt(instance)},
+            {"role": "user", "content": build_prompt(instance, source_context=ctx)},
         ],
         max_completion_tokens=8000,  # reasoning model: budget covers reasoning+output
     )

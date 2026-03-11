@@ -350,16 +350,19 @@ guesses are wrong.
 **Impact:** `evaluate_python_instance()` returns `resolved=False` with
 `error="patch apply failed"` even when the patch logic is correct.
 
-**Fix options:**
-1. Pass the repo file tree (or top-level listing) as context in the solver
-   prompt.  This alone often fixes the path guessing.
-2. Add a path-fuzzy-match fallback: if `git apply` fails, try stripping/adding
-   path components with `-p0`, `-p1`, `-p2`.
-3. Use an agentic solver that can actually browse the repo.
+**Fix applied (file-context baseline):**
+`fetch_source_context()` added to `solver/gpt5_mini.py`. It parses
+`instance["patch"]` for file paths, then fetches each from
+`raw.githubusercontent.com/{owner}/{repo}/{commit}/{path}` using
+`urllib.request` (stdlib, timeout=10 s). Content is included in the prompt
+under `## Source Files` with a ground-truth instruction to the model.
+Large files are truncated to 500 lines. All fetches are best-effort — errors
+are silently skipped and the solver degrades to zero-context if nothing can be
+fetched.
 
-**Location:** `solver/gpt5_mini.py` — `_SOLVER_SYSTEM` / `USER_TEMPLATE`; or
-add a post-processing step in `evaluator/python_harness.py` that retries apply
-with different `-p` levels.
+A complementary path-correction fallback (`_fix_patch_paths()`) was also added
+to `evaluator/python_harness.py` and `test_writer/validator.py` as a last-resort
+fallback in case path names still diverge slightly despite context being available.
 
 ---
 
@@ -389,4 +392,4 @@ with different `-p` levels.
 | 20 | Oracle test brittleness (design) | Medium | Open (design) |
 | 21 | test_writer/validator.py not implemented | High | **Fixed** — implemented with clone-once retry loop |
 | 22 | Solver outputs bare `@@` hunk separators | High | **Fixed** — `_normalize_bare_hunk_headers()` + `--recount` |
-| 23 | Zero-context solver guesses wrong file paths | High | Open — solver needs repo file tree as context |
+| 23 | Zero-context solver guesses wrong file paths | High | **Fixed** — file-context baseline: `fetch_source_context()` fetches real source files at `base_commit` and includes them in the solver prompt |
