@@ -36,6 +36,7 @@ from pathlib import Path
 
 from evaluator.python_harness import (
     _find_pytest_cmd,
+    _fix_patch_paths,
     _install_repo,
     _parse_pytest_output,
     _run,
@@ -112,6 +113,22 @@ def _apply_patch(patch_text: str, repo_dir: Path) -> tuple[bool, str]:
         )
         if rc2 == 0:
             return True, ""
+        # Fallback 3: fuzzy-match wrong file paths by basename
+        corrected = _fix_patch_paths(patch_text, repo_dir)
+        if corrected and corrected != patch_text:
+            pf_path.write_text(corrected)
+            rc3, out3 = _run(
+                ["git", "apply", "--whitespace=fix", "--recount", str(pf_path)],
+                cwd=str(repo_dir),
+            )
+            if rc3 == 0:
+                return True, ""
+            return False, (
+                f"git apply: {out[:200]}\n"
+                f"git apply --ignore-whitespace: {out1b[:200]}\n"
+                f"patch -p1: {out2[:200]}\n"
+                f"path-corrected git apply: {out3[:200]}"
+            )
         return False, (
             f"git apply: {out[:200]}\n"
             f"git apply --ignore-whitespace: {out1b[:200]}\n"
@@ -185,8 +202,10 @@ def _validate_in_dir(
     result["before_output"] = before_out
     print(f"      {before}", file=sys.stderr)
 
-    # --- Apply gold patch ---
-    ok, err = _apply_patch(instance["patch"], repo_dir)
+    # --- Apply gold patch (normalise format first) ---
+    from solver.gpt5_mini import _normalize_patch
+    gold_patch = _normalize_patch(instance["patch"])
+    ok, err = _apply_patch(gold_patch, repo_dir)
     if not ok:
         result["error"] = f"gold patch apply failed: {err}"
         _revert_to_head(repo_dir)

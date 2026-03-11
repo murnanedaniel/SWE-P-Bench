@@ -57,8 +57,11 @@ Rules:
 - The diff must apply cleanly with `git apply` or `patch -p1`.
 - Keep changes minimal — fix only what the issue describes.
 - Match the existing code style.
-- If you cannot determine exact file paths, make your best guess based on the \
-  issue description and common Python project conventions (src/ layout, etc.).
+- File paths MUST follow the actual modern layout of the repo.
+  Most scientific Python packages use the `src/<package>/` layout.
+  Derive paths from the issue text and API name (e.g. `ak.from_buffers` →
+  `src/awkward/operations/ak_from_buffers.py`).
+  Never invent legacy `_v2/` or `_v3/` subpaths.
 """
 
 _SOLVER_USER = """\
