@@ -1,0 +1,27 @@
+{
+  "oracle_tests": [
+    "test_oracle_001",
+    "test_oracle_002",
+    "test_oracle_003"
+  ],
+  "before_results": {
+    "test_oracle_001": false,
+    "test_oracle_002": false,
+    "test_oracle_003": false
+  },
+  "after_results": {
+    "test_oracle_001": true,
+    "test_oracle_002": true,
+    "test_oracle_003": true
+  },
+  "before_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001 FAILED                         [ 33%]\ntest_oracle_swepbench.py::test_oracle_002 FAILED                         [ 66%]\ntest_oracle_swepbench.py::test_oracle_003 FAILED                         [100%]\n\n=================================== FAILURES ===================================\n_______________________________ test_oracle_001 ________________________________\ntest_oracle_swepbench.py:14: in test_oracle_001\n    assert i_fam < i_state < i_star\nE   assert 431 < 294\n_______________________________ test_oracle_002 ________________________________\ntest_oracle_swepbench.py:25: in test_oracle_002\n    assert star_index > fam_index and star_index > state_index\nE   assert (294 > 347)\n_______________________________ test_oracle_003 ________________________________\ntest_oracle_swepbench.py:32: in test_oracle_003\n    assert bad_sequence not in src\nE   assert \"if mat['sta...at['family']\" not in '    @classm...eturn vals\\n'\nE     \nE     \"if mat['star']:\\n ...   if mat['family']\" is contained here:\nE           @classmethod\nE           def _from_group_dict_list(cls, mat):\nE       \nE               #if '_' in mat['name']:\nE               #    mat['name'], mat['family'] = mat['name'].split('_')...\nE     \nE     ...Full output truncated (39 lines hidden), use '-vv' to show\n=========================== short test summary info ============================\nFAILED test_oracle_swepbench.py::test_oracle_001 - assert 431 < 294\nFAILED test_oracle_swepbench.py::test_oracle_002 - assert (294 > 347)\nFAILED test_oracle_swepbench.py::test_oracle_003 - assert \"if mat['sta...at['...\n============================== 3 failed in 0.05s ===============================\n",
+  "after_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001 PASSED                         [ 33%]\ntest_oracle_swepbench.py::test_oracle_002 PASSED                         [ 66%]\ntest_oracle_swepbench.py::test_oracle_003 PASSED                         [100%]\n\n============================== 3 passed in 0.03s ===============================\n",
+  "FAIL_TO_PASS": [
+    "test_oracle_001",
+    "test_oracle_002",
+    "test_oracle_003"
+  ],
+  "PASS_TO_PASS": [],
+  "is_valid": true,
+  "error": null
+}

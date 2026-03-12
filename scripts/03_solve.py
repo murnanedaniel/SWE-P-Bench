@@ -85,6 +85,13 @@ def main() -> None:
         default="repos.yml",
         help="Path to repos.yml (default: repos.yml)",
     )
+    parser.add_argument(
+        "--attempts",
+        type=int,
+        default=1,
+        help="Number of solve attempts per instance (default: 1). "
+             "Output dir is labelled {solver}_{N}shot.",
+    )
     args = parser.parse_args()
 
     dataset_path = Path(args.dataset)
@@ -112,11 +119,12 @@ def main() -> None:
         print("No instances to solve after filtering.", flush=True)
         return
 
-    # Determine output directory: results/{solver}/{owner}/{name}/
-    # Parse repo from first instance
+    # Determine output directory: results/{solver_label}/{owner}/{name}/
+    # Label encodes the attempt count so different runs don't collide.
+    solver_label = f"{args.solver}_{args.attempts}shot"
     repo = instances[0].get("repo", "unknown/unknown")
     owner, name = (repo.split("/", 1) + ["unknown"])[:2]
-    out_dir = Path(args.out_dir) / args.solver / owner / name
+    out_dir = Path(args.out_dir) / solver_label / owner / name
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Import the solver module dynamically
@@ -136,15 +144,24 @@ def main() -> None:
         sys.exit(1)
 
     print(
-        f"Solving {len(instances)} instance(s) with {args.solver} → {out_dir}",
+        f"Solving {len(instances)} instance(s) with {solver_label} "
+        f"(attempts={args.attempts}) → {out_dir}",
         flush=True,
     )
+
+    # Pass max_attempts if the solver supports it (graceful fallback for other solvers)
+    import inspect
+    sig = inspect.signature(solver_mod.solve_dataset)
+    extra_kwargs = {}
+    if "max_attempts" in sig.parameters:
+        extra_kwargs["max_attempts"] = args.attempts
 
     solver_mod.solve_dataset(
         dataset_path=str(dataset_path),
         out_dir=str(out_dir),
         max_instances=args.max_instances,
         repos_yml=args.repos_yml,
+        **extra_kwargs,
     )
 
     # Count patches written

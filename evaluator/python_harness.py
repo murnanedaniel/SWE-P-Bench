@@ -53,6 +53,7 @@ def _run(
     cmd: list[str],
     cwd: str | None = None,
     timeout: int = 300,
+    extra_env: dict | None = None,
 ) -> tuple[int, str]:
     """Run *cmd*, return (returncode, combined stdout+stderr)."""
     try:
@@ -62,6 +63,7 @@ def _run(
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=extra_env,
         )
         return result.returncode, result.stdout + result.stderr
     except subprocess.TimeoutExpired:
@@ -298,14 +300,24 @@ def _install_repo(
     else:
         extras_list = [".[dev,test]", ".[dev]", ".[test]", "."]
 
-    attempts = [
-        [sys.executable, "-m", "pip", "install", "-e", extras, "-q"]
-        for extras in extras_list
-    ]
+    # Some old repos (pre-pyproject.toml) fail with pip >= 22 unless
+    # SETUPTOOLS_USE_DISTUTILS=stdlib is set.  Pass it in the subprocess env.
+    import os as _os
+    install_env = dict(_os.environ)
+    install_env["SETUPTOOLS_USE_DISTUTILS"] = "stdlib"
+
+    # Build all (extras, flag) combinations to try:
+    # 1. normal install with env fix
+    # 2. --no-build-isolation fallback (helps some old setup.py repos)
+    attempts: list[list[str]] = []
+    for extras in extras_list:
+        attempts.append([sys.executable, "-m", "pip", "install", "-e", extras, "-q"])
+    for extras in extras_list:
+        attempts.append([sys.executable, "-m", "pip", "install", "--no-build-isolation", "-e", extras, "-q"])
 
     last_out = ""
     for cmd in attempts:
-        rc, out = _run(cmd, cwd=str(repo_dir), timeout=600)
+        rc, out = _run(cmd, cwd=str(repo_dir), timeout=600, extra_env=install_env)
         last_out = out
         if rc == 0:
             return True, out

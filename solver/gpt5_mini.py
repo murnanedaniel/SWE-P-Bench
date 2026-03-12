@@ -378,27 +378,54 @@ def solve_instance(
     client: OpenAI,
     instance: dict,
     repo_config: dict | None = None,
+    max_attempts: int = 1,
 ) -> str:
     """Call the model and return the predicted patch string (normalised).
 
     Fetches source files at base_commit for context. Degrades gracefully
     to zero-context (issue description only) if fetching fails.
+
+    If max_attempts > 1, retries up to that many times when the model
+    returns an empty or unparseable patch (pure sampling diversity — same
+    prompt each attempt, no feedback injection).
     """
     lang = (repo_config or {}).get("language", "python")
     system = _SYSTEM_PROMPTS.get(lang, _SYSTEM_PYTHON)
 
     ctx = fetch_source_context(instance)  # {} on any failure
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": build_prompt(instance, source_context=ctx)},
+    ]
 
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": build_prompt(instance, source_context=ctx)},
-        ],
-        max_completion_tokens=8000,  # reasoning model: budget covers reasoning+output
-    )
-    raw = response.choices[0].message.content or ""
-    return _normalize_patch(raw)
+    last_exc: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = client.chat.completions.create(
+                model=MODEL,
+                messages=messages,
+                max_completion_tokens=8000,  # reasoning model: budget covers reasoning+output
+            )
+            raw = response.choices[0].message.content or ""
+            patch = _normalize_patch(raw)
+            if patch.strip():
+                return patch
+            # empty output — retry if attempts remain
+            if attempt < max_attempts:
+                print(
+                    f"  [attempt {attempt}/{max_attempts}] empty patch, retrying…",
+                    file=sys.stderr,
+                )
+        except Exception as exc:
+            last_exc = exc
+            if attempt == max_attempts:
+                raise
+            print(
+                f"  [attempt {attempt}/{max_attempts}] error: {exc}, retrying…",
+                file=sys.stderr,
+            )
+
+    return ""  # all attempts returned empty
 
 
 def solve_dataset(
@@ -406,6 +433,7 @@ def solve_dataset(
     out_dir: str,
     max_instances: int = 0,
     repos_yml: str = "repos.yml",
+    max_attempts: int = 1,
 ) -> None:
     from scraper.generic import load_repo_config
 
@@ -438,7 +466,7 @@ def solve_dataset(
             repo_cfg = load_repo_config(inst.get("repo", ""), config_path=repos_yml)
 
             try:
-                patch = solve_instance(client, inst, repo_config=repo_cfg)
+                patch = solve_instance(client, inst, repo_config=repo_cfg, max_attempts=max_attempts)
             except Exception as e:
                 print(f"  [error] {iid}: {e}", file=sys.stderr)
                 patch = ""

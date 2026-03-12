@@ -3,6 +3,27 @@
 This document records bugs, gaps, and design problems discovered during
 full-loop demo runs (`run_demo.py` on `scikit-hep/awkward`).
 
+**Run 4 (2026-03-12, mini production run on scikit-hep/particle):**
+- **pip install failure on old commits** (FIXED): instances from pre-pyproject.toml
+  era fail with `AttributeError: install_layout` under pip ≥ 22.3. Fixed by
+  setting `SETUPTOOLS_USE_DISTUTILS=stdlib` in the subprocess environment inside
+  `evaluator.python_harness._install_repo()`.  A `--no-build-isolation` fallback
+  chain was also added.
+- **Legacy `setuputils` dependency** (OPEN, severity: medium): `scikit-hep/particle`
+  commit `5fc84a3b` (issue #9) uses `from setuputils import read` in `setup.py`.
+  The `setuputils` package is not available on modern PyPI and cannot be installed.
+  Instances at base commits that use this package will always fail install.
+  Workaround: filter these out at scrape time or skip during oracle generation.
+- **`compute_per_repo_metrics` uses wrong repo slug** (FIXED): function parsed
+  `instance_id` (e.g. `scikit-hep__particle-24`) using only `rsplit("-",1)[0]`,
+  giving `scikit-hep__particle` instead of `scikit-hep/particle`. Fixed by
+  replacing the first `__` with `/` after stripping the issue number.
+- **Solver patch apply failures dominate** (OPEN): primary failure mode for
+  `gpt5_mini` is `patch apply failed` — model generates syntactically valid diffs
+  but with wrong target file paths or mismatched context lines. This accounts for
+  ≥3 of the 8 valid-oracle failures in both 1-shot and 3-shot runs. See issue #23.
+  More attempts help marginally (1→2 resolved) but path normalisation is the real fix.
+
 **Run 3 (2026-03-11, after validator added):**
 - Oracle test validator (`test_writer/validator.py`) implemented and working.
   Retry fired on attempt 1 (tests failed both before AND after gold patch on

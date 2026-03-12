@@ -87,7 +87,13 @@ def compute_per_repo_metrics(eval_records: list[dict]) -> dict[str, dict]:
     """
     groups: dict[str, list[dict]] = defaultdict(list)
     for r in eval_records:
-        repo = r.get("repo") or r.get("instance_id", "unknown/unknown").rsplit("-", 1)[0]
+        repo = r.get("repo")
+        if not repo:
+            # instance_id format: "owner__name-<issue_number>"
+            # e.g. "scikit-hep__particle-24" → "scikit-hep/particle"
+            iid = r.get("instance_id", "unknown__unknown-0")
+            slug = iid.rsplit("-", 1)[0]  # "scikit-hep__particle"
+            repo = slug.replace("__", "/", 1)
         groups[repo].append(r)
     return {repo: compute_metrics(records) for repo, records in groups.items()}
 
