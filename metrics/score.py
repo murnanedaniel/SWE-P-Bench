@@ -79,6 +79,39 @@ def print_report(metrics: dict, eval_path: str, dataset_path: str | None = None)
     print("=" * w)
 
 
+def compute_per_repo_metrics(eval_records: list[dict]) -> dict[str, dict]:
+    """Group eval records by repo slug and compute metrics per group.
+
+    Returns a dict mapping repo_slug -> metrics dict (same shape as
+    compute_metrics() output).
+    """
+    groups: dict[str, list[dict]] = defaultdict(list)
+    for r in eval_records:
+        repo = r.get("repo") or r.get("instance_id", "unknown/unknown").rsplit("-", 1)[0]
+        groups[repo].append(r)
+    return {repo: compute_metrics(records) for repo, records in groups.items()}
+
+
+def compute_oracle_validity_rate(meta_records: list[dict]) -> dict:
+    """Compute oracle validity statistics from a list of meta.json dicts.
+
+    Each dict is the content of an oracles/{instance_id}.meta.json file,
+    containing at least an ``is_valid`` boolean key.
+
+    Returns a dict with keys:
+      total         — number of meta records
+      valid         — count with is_valid == True
+      validity_rate — valid / total (float in [0, 1])
+    """
+    total = len(meta_records)
+    valid = sum(1 for r in meta_records if r.get("is_valid"))
+    return {
+        "total": total,
+        "valid": valid,
+        "validity_rate": valid / total if total else 0.0,
+    }
+
+
 def compare_evals(paths: list[str]) -> None:
     """Print a side-by-side comparison table for multiple eval files."""
     rows: list[tuple[str, dict]] = []
