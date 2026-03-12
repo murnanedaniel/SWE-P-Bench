@@ -188,9 +188,12 @@ def _normalize_patch(patch: str) -> str:
     if not stripped:
         return patch
 
-    # --- Format 1: *** Begin Patch ---
-    if stripped.startswith("*** Begin Patch"):
-        return _normalize_begin_patch(stripped)
+    # --- Format 1: *** Begin Patch (or bare *** Update/Add/Delete File:) ---
+    if stripped.startswith("*** Begin Patch") or re.match(
+        r"^\*\*\* (Update|Add|Delete) File:", stripped
+    ):
+        result = _normalize_begin_patch(stripped)
+        return _recount_hunk_sizes(result)
 
     # --- Format 2a: space-prefixed hunk headers with real line numbers ---
     # Model outputs " @@ -N,M +N,M @@" (leading space) instead of "@@ -N,M +N,M @@".
@@ -199,18 +202,69 @@ def _normalize_patch(patch: str) -> str:
         result = re.sub(r"^ @@", "@@", stripped, flags=re.MULTILINE)
         if result and not result.endswith("\n"):
             result += "\n"
-        return result
+        return _recount_hunk_sizes(result)
 
     # --- Format 2b: bare @@ separators (no line numbers) ---
     # Only kick in when there are bare-@@ lines AND no valid hunk headers.
     if _BARE_HUNK_RE.search(stripped) and not _VALID_HUNK_RE.search(stripped):
         result = _normalize_bare_hunk_headers(stripped)
-        # Ensure the patch ends with a newline (patch/git apply require it).
         if result and not result.endswith("\n"):
             result += "\n"
-        return result
+        return _recount_hunk_sizes(result)
 
-    return patch  # already standard unified diff (or unrecognised format)
+    # Standard unified diff — still recount in case the LLM wrote wrong counts.
+    return _recount_hunk_sizes(patch)
+
+
+def _recount_hunk_sizes(patch_text: str) -> str:
+    """Fix @@ -N,M +N,M @@ line counts to match actual hunk body.
+
+    LLMs commonly emit wrong counts in hunk headers (e.g. ``@@ -10,3 +10,5 @@``
+    when the body actually has 4 original lines and 8 new lines).  Wrong counts
+    cause ``patch`` to declare "malformed patch" even with ``--fuzz``.
+
+    Strategy: split on hunk headers, count context/+/- lines in each body, and
+    rewrite the M values.  The starting line N is left to ``--recount`` / the
+    existing ``_correct_hunk_positions`` call.
+    """
+    _HDR_RE = re.compile(
+        r"(@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@([^\n]*))\n",
+        re.MULTILINE,
+    )
+    _DIFF_LINE_RE = re.compile(r"^(diff --git |--- |\+\+\+ )")
+
+    parts = _HDR_RE.split(patch_text)
+    # split() with a capturing group interleaves: [pre, full_match, g1, g2, g3, body, ...]
+    # Groups: 0=full, 1=orig_start, 2=new_start, 3=suffix
+    result: list[str] = [parts[0]]
+    i = 1
+    while i < len(parts):
+        if i + 4 >= len(parts):
+            result.append(parts[i])
+            i += 1
+            continue
+        _full, orig_start, new_start, suffix = parts[i], parts[i + 1], parts[i + 2], parts[i + 3]
+        body = parts[i + 4]
+
+        orig_count = 0
+        new_count = 0
+        for line in body.splitlines():
+            if _DIFF_LINE_RE.match(line):
+                break  # start of next file section
+            if line.startswith("-"):
+                orig_count += 1
+            elif line.startswith("+"):
+                new_count += 1
+            else:  # context (space) or blank
+                orig_count += 1
+                new_count += 1
+
+        suf = f" {suffix}" if suffix.strip() else suffix
+        result.append(f"@@ -{orig_start},{orig_count} +{new_start},{new_count} @@{suf}\n")
+        result.append(body)
+        i += 5
+
+    return "".join(result)
 
 
 def _normalize_begin_patch(stripped: str) -> str:

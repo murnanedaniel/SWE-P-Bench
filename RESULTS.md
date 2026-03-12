@@ -24,18 +24,18 @@ the instructions in [CONTRIBUTING](#contributing).
 | Solver            | Instances | Valid Oracles | Resolved | Resolve Rate |
 |-------------------|----------:|:-------------:|---------:|-------------:|
 | `gold`            |        10 | 8/10          |        8 |       80.0%  |
-| `gpt5_mini_1shot` |        10 | 8/10          |        1 |       10.0%  |
+| `gpt5_mini_1shot` |        10 | 8/10          |        2 |       20.0%  |
 | `gpt5_mini_3shot` |        10 | 8/10          |        2 |       20.0%  |
 
 **Key observations:**
-- `gpt5_mini_3shot` (up to 3 independent attempts, best non-empty patch)
-  doubles the resolution rate vs `gpt5_mini_1shot` (2 vs 1 instance).
-- The primary failure mode for both solvers is **patch apply failure** — the
-  model generates structurally correct diffs but with wrong file paths or
-  line numbers. See `ISSUES.md` issue #23.
-- 3 instances had patch apply failures even with 3 attempts, suggesting the
-  file-context baseline needs better path normalisation rather than just more
-  sampling.
+- Both baselines now resolve 2/10 (20%) after patch apply improvements.
+- `gpt5_mini_1shot` improved from 1→2 with the hunk-recount + progressive-fuzz fix
+  (particle-49 now applies; previously "malformed patch" due to wrong hunk counts).
+- Remaining failures are genuinely wrong patches (tests run but don't pass),
+  one empty patch (particle-24, 1shot), and the two known-bad instances.
+- The patch apply pipeline now matches SWE-bench's fallback chain
+  (`git apply` → `git apply --3way` → `patch --fuzz=5` → `patch --fuzz=8`)
+  plus hunk-count normalisation for LLM-generated diffs.
 
 ---
 

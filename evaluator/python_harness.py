@@ -482,15 +482,24 @@ def evaluate_python_instance(
                     patch_out1b = patch_out1b + "\n" + patch_out1c
 
             if rc != 0:
-                # Fallback 3: GNU patch with fuzz
-                rc2, patch_out2 = _run(
-                    ["patch", "-p1", "--fuzz=3", "--input", str(patch_file)],
-                    cwd=str(repo_dir),
-                )
+                # Fallback 3: GNU patch with progressive fuzz (5→8)
+                # fuzz=5 matches SWE-bench; fuzz=8 handles hunks with longer context
+                patch_out2 = ""
+                for _fuzz in (5, 8):
+                    rc2, patch_out2 = _run(
+                        ["patch", "-p1", f"--fuzz={_fuzz}", "--batch",
+                         "--input", str(patch_file)],
+                        cwd=str(repo_dir),
+                    )
+                    if rc2 == 0:
+                        break
+                    _run(["git", "reset", "--hard", "HEAD"], cwd=str(repo_dir))
+                    _run(["git", "clean", "-fd"], cwd=str(repo_dir))
                 if rc2 == 0:
                     rc = 0
                 else:
-                    # Fallback 3: fix wrong file paths by basename fuzzy-match
+                    # Fallback 4: fix wrong file paths by basename fuzzy-match,
+                    # then retry with both git apply and patch --fuzz=5
                     corrected = _fix_patch_paths(predicted_patch, repo_dir)
                     if corrected and corrected != predicted_patch:
                         print(
@@ -506,21 +515,36 @@ def evaluate_python_instance(
                         if rc3 == 0:
                             rc = 0
                         else:
-                            result["error"] = (
-                                f"patch apply failed (including path-corrected retry).\n"
-                                f"git apply: {patch_out[:200]}\n"
-                                f"git apply --ignore-whitespace: {patch_out1b[:200]}\n"
-                                f"patch -p1: {patch_out2[:200]}\n"
-                                f"path-corrected git apply: {patch_out3[:200]}"
-                            )
-                            print(f"  [error] patch apply failed", file=sys.stderr)
-                            return result
+                            patch_out3b = ""
+                            for _fuzz in (5, 8):
+                                rc3b, patch_out3b = _run(
+                                    ["patch", "-p1", f"--fuzz={_fuzz}", "--batch",
+                                     "--input", str(patch_file)],
+                                    cwd=str(repo_dir),
+                                )
+                                if rc3b == 0:
+                                    break
+                                _run(["git", "reset", "--hard", "HEAD"], cwd=str(repo_dir))
+                                _run(["git", "clean", "-fd"], cwd=str(repo_dir))
+                            if rc3b == 0:
+                                rc = 0
+                            else:
+                                result["error"] = (
+                                    f"patch apply failed (including path-corrected retry).\n"
+                                    f"git apply: {patch_out[:200]}\n"
+                                    f"git apply --ignore-whitespace: {patch_out1b[:200]}\n"
+                                    f"patch --fuzz=5: {patch_out2[:200]}\n"
+                                    f"path-corrected git apply: {patch_out3[:200]}\n"
+                                    f"path-corrected patch --fuzz=5: {patch_out3b[:200]}"
+                                )
+                                print(f"  [error] patch apply failed", file=sys.stderr)
+                                return result
                     else:
                         result["error"] = (
                             f"patch apply failed.\n"
                             f"git apply: {patch_out[:300]}\n"
                             f"git apply --ignore-whitespace: {patch_out1b[:300]}\n"
-                            f"patch -p1: {patch_out2[:300]}"
+                            f"patch --fuzz=5: {patch_out2[:300]}"
                         )
                         print(f"  [error] patch apply failed", file=sys.stderr)
                         return result

@@ -107,10 +107,17 @@ def _apply_patch(patch_text: str, repo_dir: Path) -> tuple[bool, str]:
         )
         if rc1b == 0:
             return True, ""
-        # Fallback 2: GNU patch
-        rc2, out2 = _run(
-            ["patch", "-p1", "--input", str(pf_path)], cwd=str(repo_dir)
-        )
+        # Fallback 2: GNU patch with progressive fuzz (5→8)
+        out2 = ""
+        for _fuzz in (5, 8):
+            rc2, out2 = _run(
+                ["patch", "-p1", f"--fuzz={_fuzz}", "--batch", "--input", str(pf_path)],
+                cwd=str(repo_dir),
+            )
+            if rc2 == 0:
+                break
+            _run(["git", "reset", "--hard", "HEAD"], cwd=str(repo_dir))
+            _run(["git", "clean", "-fd"], cwd=str(repo_dir))
         if rc2 == 0:
             return True, ""
         # Fallback 3: fuzzy-match wrong file paths by basename
@@ -123,16 +130,23 @@ def _apply_patch(patch_text: str, repo_dir: Path) -> tuple[bool, str]:
             )
             if rc3 == 0:
                 return True, ""
+            rc3b, out3b = _run(
+                ["patch", "-p1", "--fuzz=5", "--batch", "--input", str(pf_path)],
+                cwd=str(repo_dir),
+            )
+            if rc3b == 0:
+                return True, ""
             return False, (
                 f"git apply: {out[:200]}\n"
                 f"git apply --ignore-whitespace: {out1b[:200]}\n"
-                f"patch -p1: {out2[:200]}\n"
-                f"path-corrected git apply: {out3[:200]}"
+                f"patch --fuzz=5: {out2[:200]}\n"
+                f"path-corrected git apply: {out3[:200]}\n"
+                f"path-corrected patch --fuzz=5: {out3b[:200]}"
             )
         return False, (
             f"git apply: {out[:200]}\n"
             f"git apply --ignore-whitespace: {out1b[:200]}\n"
-            f"patch -p1: {out2[:200]}"
+            f"patch --fuzz=5: {out2[:200]}"
         )
     finally:
         pf_path.unlink(missing_ok=True)
