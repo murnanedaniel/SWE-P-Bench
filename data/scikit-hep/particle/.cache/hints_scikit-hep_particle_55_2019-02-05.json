@@ -1,0 +1,1 @@
+"Apologies for the late reply. I have been offline most of the day.\r\n\r\nAh, thanks for reporting. Indeed there is a line missing in `setup.py`!\r\n\r\nDo you want to try for you adding the line\r\n```\r\nsetup(\r\n    ...\r\n    package_data={'particle/data': ['*.*']},\r\n    \u2026.\r\n)\r\n```\r\nlocally in `setup.py` or shall I commit the line and make a release?"
