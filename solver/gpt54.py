@@ -1,0 +1,469 @@
+"""
+GPT-5.4 file-context baseline solver for SWE-P-Bench.
+
+Identical to ``solver/gpt5_mini`` in structure but uses ``gpt-5.4``,
+OpenAI's frontier model (released 2026-03-05, 1.05M token context).
+
+Usage:
+    python -m solver.gpt54 \\
+        --dataset data/scikit-hep/particle/candidates.jsonl \\
+        --out results/gpt54_1shot/scikit-hep/particle/
+
+Environment:
+    OPENAI_API_KEY  OpenAI API key
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+import urllib.request
+from pathlib import Path
+
+from dotenv import load_dotenv
+from openai import OpenAI
+from tqdm import tqdm
+
+load_dotenv()
+
+MODEL = "gpt-5.4"
+
+# ---------------------------------------------------------------------------
+# Language-aware system prompts (same as gpt5_mini)
+# ---------------------------------------------------------------------------
+
+_SYSTEM_PYTHON = """\
+You are an expert Python software engineer working on scientific / HEP Python libraries.
+
+Your task: given a GitHub issue description, produce a minimal unified diff patch \
+(git diff format) that resolves the issue in the described repository.
+
+Rules:
+- Output ONLY the raw unified diff, nothing else.
+- Do not include explanations, prose, or code fences.
+- The diff must apply cleanly with `git apply` or `patch -p1`.
+- Keep changes minimal — fix only what the issue describes.
+- Match the existing code style.
+- File paths MUST follow the actual modern layout of the repo.
+  Most scientific Python packages use the `src/<package>/` layout.
+  For example: `src/awkward/operations/ak_from_buffers.py`, not `awkward/_v2/foo.py`.
+  If the issue text or API name gives a clue (e.g. `ak.from_buffers`), derive the
+  file path as `src/<package>/operations/<module>.py` or similar.
+  Never invent legacy `_v2/` or `_v3/` subpaths that may have been removed.
+- When source files are provided, each line is prefixed with its line number.
+  Use those numbers to write correct @@ -N,M +N,M @@ hunk headers.
+  Copy context and removed lines VERBATIM from the numbered source.
+  Never invent code not shown in the source files.
+"""
+
+_SYSTEM_CPP = """\
+You are an expert C++ software engineer working on the ACTS project \
+(A Common Tracking Software for high-energy physics experiments).
+
+Your task: given a GitHub issue description, produce a minimal unified diff \
+patch (git diff format) that resolves the issue in the ACTS codebase.
+
+Rules:
+- Output ONLY the raw unified diff, nothing else.
+- Do not include explanations, prose, or code fences.
+- The diff must apply cleanly with `git apply` or `patch -p1`.
+- Keep changes minimal — fix only what the issue describes.
+- Match the existing code style (C++17/20, camelCase, ACTS conventions).
+- If you cannot determine the exact file paths, make your best guess based \
+  on the issue description and ACTS project conventions.
+"""
+
+_SYSTEM_PROMPTS: dict[str, str] = {
+    "python": _SYSTEM_PYTHON,
+    "cpp": _SYSTEM_CPP,
+}
+
+USER_TEMPLATE = """\
+## Repository
+{repo}
+
+## Issue
+
+{problem_statement}
+
+{hints_section}
+{source_files_section}
+## Task
+
+Produce a unified diff patch that resolves this issue. Output only the raw diff.
+"""
+
+
+# ---------------------------------------------------------------------------
+# Patch normalisers (reused from gpt5_mini)
+# ---------------------------------------------------------------------------
+
+_BARE_HUNK_RE = re.compile(r"^ @@\s*$", re.MULTILINE)
+_VALID_HUNK_RE = re.compile(r"^@@ -\d", re.MULTILINE)
+
+
+def _normalize_bare_hunk_headers(patch: str) -> str:
+    lines = patch.splitlines(keepends=True)
+    result: list[str] = []
+    i = 0
+    orig_running = 1
+
+    while i < len(lines):
+        line = lines[i]
+        if re.match(r"^ @@\s*$", line):
+            orig_count = 0
+            new_count = 0
+            j = i + 1
+            while j < len(lines) and not re.match(r"^ @@\s*$|^diff --git ", lines[j]):
+                c = lines[j]
+                if c.startswith("-"):
+                    orig_count += 1
+                elif c.startswith("+"):
+                    new_count += 1
+                else:
+                    orig_count += 1
+                    new_count += 1
+                j += 1
+            result.append(f"@@ -{orig_running},{orig_count} +{orig_running},{new_count} @@\n")
+            orig_running += orig_count
+            i += 1
+        else:
+            result.append(line)
+            i += 1
+
+    return "".join(result)
+
+
+def _normalize_patch(patch: str) -> str:
+    stripped = patch.strip()
+    if not stripped:
+        return patch
+
+    if stripped.startswith("*** Begin Patch") or re.match(
+        r"^\*\*\* (Update|Add|Delete) File:", stripped
+    ):
+        result = _normalize_begin_patch(stripped)
+        return _recount_hunk_sizes(result)
+
+    _SPACED_HUNK_RE = re.compile(r"^ @@ -\d+", re.MULTILINE)
+    if _SPACED_HUNK_RE.search(stripped):
+        result = re.sub(r"^ @@", "@@", stripped, flags=re.MULTILINE)
+        if result and not result.endswith("\n"):
+            result += "\n"
+        return _recount_hunk_sizes(result)
+
+    if _BARE_HUNK_RE.search(stripped) and not _VALID_HUNK_RE.search(stripped):
+        result = _normalize_bare_hunk_headers(stripped)
+        if result and not result.endswith("\n"):
+            result += "\n"
+        return _recount_hunk_sizes(result)
+
+    return _recount_hunk_sizes(patch)
+
+
+def _recount_hunk_sizes(patch_text: str) -> str:
+    _HDR_RE = re.compile(
+        r"(@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@([^\n]*))\n",
+        re.MULTILINE,
+    )
+    _DIFF_LINE_RE = re.compile(r"^(diff --git |--- |\+\+\+ )")
+
+    parts = _HDR_RE.split(patch_text)
+    result: list[str] = [parts[0]]
+    i = 1
+    while i < len(parts):
+        if i + 4 >= len(parts):
+            result.append(parts[i])
+            i += 1
+            continue
+        _full, orig_start, new_start, suffix = parts[i], parts[i + 1], parts[i + 2], parts[i + 3]
+        body = parts[i + 4]
+
+        orig_count = 0
+        new_count = 0
+        for line in body.splitlines():
+            if _DIFF_LINE_RE.match(line):
+                break
+            if line.startswith("-"):
+                orig_count += 1
+            elif line.startswith("+"):
+                new_count += 1
+            else:
+                orig_count += 1
+                new_count += 1
+
+        suf = f" {suffix}" if suffix.strip() else suffix
+        result.append(f"@@ -{orig_start},{orig_count} +{new_start},{new_count} @@{suf}\n")
+        result.append(body)
+        i += 5
+
+    return "".join(result)
+
+
+def _normalize_begin_patch(stripped: str) -> str:
+    lines = stripped.splitlines()
+    out: list[str] = []
+    current_file: str | None = None
+
+    for line in lines:
+        if line.startswith("*** Begin Patch") or line.startswith("*** End Patch"):
+            continue
+        if line.startswith("*** Update File:"):
+            current_file = line[len("*** Update File:"):].strip()
+            out.append(f"diff --git a/{current_file} b/{current_file}")
+            out.append(f"--- a/{current_file}")
+            out.append(f"+++ b/{current_file}")
+            continue
+        if line.startswith("*** Add File:"):
+            current_file = line[len("*** Add File:"):].strip()
+            out.append(f"diff --git a/{current_file} b/{current_file}")
+            out.append("new file mode 100644")
+            out.append(f"--- /dev/null")
+            out.append(f"+++ b/{current_file}")
+            continue
+        if line.startswith("*** Delete File:"):
+            current_file = line[len("*** Delete File:"):].strip()
+            out.append(f"diff --git a/{current_file} b/{current_file}")
+            out.append("deleted file mode 100644")
+            out.append(f"--- a/{current_file}")
+            out.append("+++ /dev/null")
+            continue
+        if line.startswith("@@@"):
+            rest = line[3:].strip()
+            if rest:
+                out.append(f"@@ -{rest},0 +{rest},0 @@")
+            else:
+                out.append("@@ -1 +1 @@")
+            continue
+        if current_file is not None:
+            if line and line[0] not in ("+", "-", " ", "\\"):
+                out.append(" " + line)
+            else:
+                out.append(line)
+
+    return "\n".join(out) + "\n" if out else stripped
+
+
+# ---------------------------------------------------------------------------
+# Source-context fetching
+# ---------------------------------------------------------------------------
+
+_MAX_LINES = 500
+_TRUNCATION_MARKER = "# [file truncated to 500 lines for prompt efficiency]"
+
+
+def _parse_patch_paths(patch_text: str) -> list[str]:
+    return re.findall(r"^diff --git a/(\S+)", patch_text, re.MULTILINE)
+
+
+def _fetch_file_at_commit(
+    owner: str,
+    repo: str,
+    commit: str,
+    path: str,
+) -> str | None:
+    url = f"https://raw.githubusercontent.com/{owner}/{repo}/{commit}/{path}"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            content = resp.read().decode("utf-8", errors="replace")
+        lines = content.splitlines(keepends=True)
+        if len(lines) > _MAX_LINES:
+            lines = lines[:_MAX_LINES]
+            lines.append(_TRUNCATION_MARKER + "\n")
+        return "".join(lines)
+    except Exception:
+        return None
+
+
+def fetch_source_context(instance: dict, max_files: int = 5) -> dict[str, str]:
+    patch_text = instance.get("patch", "") or ""
+    if not patch_text.strip():
+        return {}
+    paths = _parse_patch_paths(patch_text)
+    if not paths:
+        return {}
+    repo = instance.get("repo", "")
+    base_commit = instance.get("base_commit", "")
+    if not repo or not base_commit or "/" not in repo:
+        return {}
+    owner, repo_name = repo.split("/", 1)
+    context: dict[str, str] = {}
+    for path in paths[:max_files]:
+        content = _fetch_file_at_commit(owner, repo_name, base_commit, path)
+        if content is not None:
+            context[path] = content
+    return context
+
+
+# ---------------------------------------------------------------------------
+# Core solver
+# ---------------------------------------------------------------------------
+
+def build_prompt(
+    instance: dict,
+    source_context: dict[str, str] | None = None,
+) -> str:
+    hints = instance.get("hints_text", "").strip()
+    hints_section = f"## Hints / Discussion\n\n{hints}" if hints else ""
+
+    if source_context:
+        file_blocks: list[str] = []
+        for path, content in source_context.items():
+            numbered = "\n".join(
+                f"{i + 1:4}: {line}"
+                for i, line in enumerate(content.splitlines())
+            )
+            file_blocks.append(f"### `{path}`\n\n```\n{numbered}\n```")
+        files_body = "\n\n".join(file_blocks)
+        source_files_section = (
+            "\n## Source Files\n\n"
+            "Each line is prefixed with its 1-based line number followed by ': '.\n"
+            "Use these exact line numbers in your unified diff hunk headers\n"
+            "(e.g. @@ -278,14 +278,19 @@). Do NOT invent code not shown here.\n\n"
+            f"{files_body}\n"
+        )
+    else:
+        source_files_section = ""
+
+    return USER_TEMPLATE.format(
+        repo=instance.get("repo", ""),
+        problem_statement=instance["problem_statement"],
+        hints_section=hints_section,
+        source_files_section=source_files_section,
+    ).strip()
+
+
+def solve_instance(
+    client: OpenAI,
+    instance: dict,
+    repo_config: dict | None = None,
+    max_attempts: int = 1,
+) -> str:
+    """Call gpt-5.4 and return the predicted patch string (normalised).
+
+    Fetches source files at base_commit for context. Degrades gracefully
+    to zero-context (issue description only) if fetching fails.
+
+    If max_attempts > 1, retries up to that many times when the model
+    returns an empty or unparseable patch (pure sampling diversity).
+    """
+    lang = (repo_config or {}).get("language", "python")
+    system = _SYSTEM_PROMPTS.get(lang, _SYSTEM_PYTHON)
+
+    ctx = fetch_source_context(instance)
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": build_prompt(instance, source_context=ctx)},
+    ]
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = client.chat.completions.create(
+                model=MODEL,
+                messages=messages,
+                temperature=0.2,
+                max_tokens=8000,
+            )
+            raw = response.choices[0].message.content or ""
+            patch = _normalize_patch(raw)
+            if patch.strip():
+                return patch
+            if attempt < max_attempts:
+                print(
+                    f"  [attempt {attempt}/{max_attempts}] empty patch, retrying…",
+                    file=sys.stderr,
+                )
+        except Exception as exc:
+            if attempt == max_attempts:
+                raise
+            print(
+                f"  [attempt {attempt}/{max_attempts}] error: {exc}, retrying…",
+                file=sys.stderr,
+            )
+
+    return ""
+
+
+def solve_dataset(
+    dataset_path: str,
+    out_dir: str,
+    max_instances: int = 0,
+    repos_yml: str = "repos.yml",
+    max_attempts: int = 1,
+) -> None:
+    from scraper.generic import load_repo_config
+
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    predictions_path = out / "predictions.jsonl"
+
+    instances: list[dict] = []
+    with open(dataset_path) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                instances.append(json.loads(line))
+
+    if max_instances:
+        instances = instances[:max_instances]
+
+    print(f"Solving {len(instances)} instances with {MODEL}…")
+
+    with open(predictions_path, "a") as pred_f:
+        for inst in tqdm(instances, unit="instance"):
+            iid = inst["instance_id"]
+            patch_file = out / f"{iid}.patch"
+
+            if patch_file.exists():
+                continue
+
+            repo_cfg = load_repo_config(inst.get("repo", ""), config_path=repos_yml)
+
+            try:
+                patch = solve_instance(client, inst, repo_config=repo_cfg, max_attempts=max_attempts)
+            except Exception as e:
+                print(f"  [error] {iid}: {e}", file=sys.stderr)
+                patch = ""
+
+            patch_file.write_text(patch)
+
+            pred_f.write(json.dumps({
+                "instance_id": iid,
+                "model": MODEL,
+                "patch": patch,
+            }) + "\n")
+            pred_f.flush()
+
+    print(f"Predictions written to {predictions_path}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="GPT-5.4 solver for SWE-P-Bench")
+    parser.add_argument("--dataset", required=True,
+                        help="Path to JSONL dataset of instances")
+    parser.add_argument("--out", default="results/gpt54_1shot/")
+    parser.add_argument("--max-instances", type=int, default=0,
+                        help="Limit instances solved (0 = all)")
+    parser.add_argument("--repos-yml", default="repos.yml",
+                        help="Path to repos.yml config (default: repos.yml)")
+    args = parser.parse_args()
+
+    if not os.environ.get("OPENAI_API_KEY"):
+        print("ERROR: OPENAI_API_KEY not set.", file=sys.stderr)
+        sys.exit(1)
+
+    solve_dataset(
+        dataset_path=args.dataset,
+        out_dir=args.out,
+        max_instances=args.max_instances,
+        repos_yml=args.repos_yml,
+    )
+
+
+if __name__ == "__main__":
+    main()
