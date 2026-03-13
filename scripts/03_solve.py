@@ -92,6 +92,12 @@ def main() -> None:
         help="Number of solve attempts per instance (default: 1). "
              "Output dir is labelled {solver}_{N}shot.",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Parallel API call workers (default: 4)",
+    )
     args = parser.parse_args()
 
     dataset_path = Path(args.dataset)
@@ -155,6 +161,8 @@ def main() -> None:
     extra_kwargs = {}
     if "max_attempts" in sig.parameters:
         extra_kwargs["max_attempts"] = args.attempts
+    if "workers" in sig.parameters:
+        extra_kwargs["workers"] = args.workers
 
     solver_mod.solve_dataset(
         dataset_path=str(dataset_path),
