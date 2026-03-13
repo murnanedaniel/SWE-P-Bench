@@ -1,1 +1,0 @@
-"A minimal intrusive way to make this work is to return special dict-like classes, which modify the internal state of Minuit when its values are changed.\n\n@HDembinski - I'm going through the issues with no milestone, setting something.\r\n\r\nIs this a v1.3 item? If no, please move to a later milestone."
