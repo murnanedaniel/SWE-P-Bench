@@ -1,19 +1,17 @@
-from particle import Particle, Inv
+import inspect
+from particle import Particle
+
 
 def test_oracle_001():
-    # anti_flag attribute must exist and bar property should reflect antiparticle for negative pdgid
-    p = Particle(-11, "e-", 0.511, 0.0, Inv.Full)
-    assert getattr(p, "anti_flag") is Inv.Full
-    assert p.bar is True
+    doc = inspect.getdoc(Particle)
+    assert "charge\n    The particle charge, in units of the positron charge." in doc
+
 
 def test_oracle_002():
-    # invert() must return the antiparticle (pdgid sign flipped) when anti_flag == Inv.Full
-    p = Particle(11, "e+", 0.511, 0.0, Inv.Full)
-    inv = p.invert()
-    assert int(inv.pdgid) == -11 or inv.pdgid == -11
+    doc = inspect.getdoc(Particle)
+    assert "mass_lower\n    The lower uncertainty on the particle mass, in MeV." in doc
+
 
 def test_oracle_003():
-    # __str__ should include the tilde for inverted particle names when anti_flag == Inv.Full and pdgid < 0
-    p = Particle(-11, "e-", 0.511, 0.0, Inv.Full)
-    s = str(p)
-    assert "~" in s
+    doc = inspect.getdoc(Particle)
+    assert "anti_flag\n    The particle-antiparticle flag." in doc

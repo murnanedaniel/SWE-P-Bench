@@ -1,14 +1,17 @@
-from particle.particle import enums
-import pytest
+from particle import Particle
+from particle.particle.enums import Parity
+
 
 def test_oracle_001():
-    # '-' should map to Parity.m (minus)
-    assert enums.Parity_mapping['-'] == enums.Parity.m
+    p = Particle.from_pdgid(313)
+    assert p.P == Parity.m
+
 
 def test_oracle_002():
-    # empty parity string should map to unknown (Parity.u)
-    assert enums.Parity_mapping[''] == enums.Parity.u
+    p = Particle.from_pdgid(5122)
+    assert p.P == Parity.p
+
 
 def test_oracle_003():
-    # empty charge string should map to unknown (Charge.u)
-    assert enums.Charge_mapping[''] == enums.Charge.u
+    p = Particle.from_pdgid(22)
+    assert p.P == Parity.m

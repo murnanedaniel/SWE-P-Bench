@@ -4,24 +4,12 @@
     "test_oracle_002",
     "test_oracle_003"
   ],
-  "before_results": {
-    "test_oracle_001": false,
-    "test_oracle_002": false,
-    "test_oracle_003": false
-  },
-  "after_results": {
-    "test_oracle_001": true,
-    "test_oracle_002": true,
-    "test_oracle_003": true
-  },
-  "before_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001 FAILED                         [ 33%]\ntest_oracle_swepbench.py::test_oracle_002 FAILED                         [ 66%]\ntest_oracle_swepbench.py::test_oracle_003 FAILED                         [100%]\n\n=================================== FAILURES ===================================\n_______________________________ test_oracle_001 ________________________________\ntest_oracle_swepbench.py:7: in test_oracle_001\n    assert width_to_lifetime(0.0) == float('inf')\n           ^^^^^^^^^^^^^^^^^^^^^^\nparticle/particle/kinematics.py:48: in width_to_lifetime\n    raise ValueError( 'Input provided, %s <= 0!'.format(Gamma) )\nE   ValueError: Input provided, %s <= 0!\n_______________________________ test_oracle_002 ________________________________\ntest_oracle_swepbench.py:11: in test_oracle_002\n    assert lifetime_to_width(0.0) == float('inf')\n           ^^^^^^^^^^^^^^^^^^^^^^\nparticle/particle/kinematics.py:89: in lifetime_to_width\n    raise ValueError( 'Input provided, %s <= 0!'.format(tau) )\nE   ValueError: Input provided, %s <= 0!\n_______________________________ test_oracle_003 ________________________________\ntest_oracle_swepbench.py:20: in test_oracle_003\n    assert getattr(p, \"lifetime\") == float('inf')\n           ^^^^^^^^^^^^^^^^^^^^^^\nE   AttributeError: 'Particle' object has no attribute 'lifetime'\n=========================== short test summary info ============================\nFAILED test_oracle_swepbench.py::test_oracle_001 - ValueError: Input provided...\nFAILED test_oracle_swepbench.py::test_oracle_002 - ValueError: Input provided...\nFAILED test_oracle_swepbench.py::test_oracle_003 - AttributeError: 'Particle'...\n============================== 3 failed in 0.04s ===============================\n",
-  "after_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001 PASSED                         [ 33%]\ntest_oracle_swepbench.py::test_oracle_002 PASSED                         [ 66%]\ntest_oracle_swepbench.py::test_oracle_003 PASSED                         [100%]\n\n============================== 3 passed in 0.03s ===============================\n",
-  "FAIL_TO_PASS": [
-    "test_oracle_001",
-    "test_oracle_002",
-    "test_oracle_003"
-  ],
+  "before_results": {},
+  "after_results": {},
+  "before_output": "============================= test session starts ==============================\ncollecting ... collected 0 items / 1 error\n\n==================================== ERRORS ====================================\n__________________ ERROR collecting test_oracle_swepbench.py ___________________\nImportError while importing test module '/tmp/swepbench_val_1oeuq4ft/repo/test_oracle_swepbench.py'.\nHint: make sure your test modules/packages have valid Python names.\nTraceback:\n/usr/lib/python3.11/importlib/__init__.py:126: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntest_oracle_swepbench.py:3: in <module>\n    from particle.kinematics import lifetime_to_width, width_to_lifetime\nE   ModuleNotFoundError: No module named 'particle.kinematics'\n=========================== short test summary info ============================\nERROR test_oracle_swepbench.py\n!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n=============================== 1 error in 0.11s ===============================\n",
+  "after_output": "",
+  "FAIL_TO_PASS": [],
   "PASS_TO_PASS": [],
-  "is_valid": true,
-  "error": null
+  "is_valid": false,
+  "error": "gold patch apply failed: git apply: error: corrupt patch at line 131\n\ngit apply --ignore-whitespace: error: corrupt patch at line 131\n\npatch --fuzz=5: patching file particle/particle/kinematics.py\nHunk #2 succeeded at 47 with fuzz 3 (offset 1 line).\nHunk #4 succeeded at 93 with fuzz 3 (offset 1 line).\npatching file particle/particle/particle.py\nHunk"
 }
