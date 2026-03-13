@@ -60,7 +60,7 @@ repos:
 
   scikit-hep/pyhf:
     language: python
-    install_cmd: "pip install -e '.[dev]'"
+    install_cmd: "pip install --break-system-packages -e '.[dev]'"
     install_extras:
       - ".[dev,test]"
       - ".[dev]"

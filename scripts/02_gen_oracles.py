@@ -22,7 +22,7 @@ import argparse
 import json
 import os
 import sys
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor as ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 # Ensure project root is on the path when run as a script

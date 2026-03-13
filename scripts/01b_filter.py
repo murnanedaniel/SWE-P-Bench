@@ -229,14 +229,23 @@ def run_filter(
     all_results.sort(key=lambda r: order.get(r["instance_id"], 9999))
 
     out.parent.mkdir(parents=True, exist_ok=True)
-    with open(out, "w") as f:
+
+    # Write all scored instances (for inspection / debugging)
+    out_scored = Path(out_path).parent / "candidates_scored.jsonl"
+    with open(out_scored, "w") as f:
         for rec in all_results:
             f.write(json.dumps(rec) + "\n")
 
-    passed = sum(1 for r in all_results if r.get("filter_pass"))
+    # Write ONLY passing instances to candidates_filtered.jsonl
+    # (downstream scripts read this file and assume all instances are valid)
+    passing = [r for r in all_results if r.get("filter_pass")]
+    with open(out, "w") as f:
+        for rec in passing:
+            f.write(json.dumps(rec) + "\n")
+
     print(
-        f"\nWrote {len(all_results)} records to {out_path}  "
-        f"({passed} pass / {len(all_results) - passed} discard)"
+        f"\nWrote {len(passing)} passing to {out_path}  "
+        f"({len(all_results) - len(passing)} discarded → {out_scored})"
     )
 
 

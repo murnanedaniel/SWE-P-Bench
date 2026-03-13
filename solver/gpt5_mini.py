@@ -39,7 +39,9 @@ import os
 import re
 import sys
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from threading import Lock
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -499,6 +501,7 @@ def solve_dataset(
     max_instances: int = 0,
     repos_yml: str = "repos.yml",
     max_attempts: int = 1,
+    workers: int = 1,
 ) -> None:
     from scraper.generic import load_repo_config
 
@@ -518,32 +521,39 @@ def solve_dataset(
     if max_instances:
         instances = instances[:max_instances]
 
-    print(f"Solving {len(instances)} instances with {MODEL}…")
+    # Skip already-solved instances
+    instances = [i for i in instances if not (out / f"{i['instance_id']}.patch").exists()]
+
+    print(f"Solving {len(instances)} instances with {MODEL} (workers={workers})…")
+
+    write_lock = Lock()
+
+    def _solve_one(inst: dict) -> tuple[str, str]:
+        iid = inst["instance_id"]
+        repo_cfg = load_repo_config(inst.get("repo", ""), config_path=repos_yml)
+        try:
+            patch = solve_instance(client, inst, repo_config=repo_cfg, max_attempts=max_attempts)
+        except Exception as e:
+            print(f"  [error] {iid}: {e}", file=sys.stderr)
+            patch = ""
+        return iid, patch
 
     with open(predictions_path, "a") as pred_f:
-        for inst in tqdm(instances, unit="instance"):
-            iid = inst["instance_id"]
-            patch_file = out / f"{iid}.patch"
-
-            if patch_file.exists():
-                continue
-
-            repo_cfg = load_repo_config(inst.get("repo", ""), config_path=repos_yml)
-
-            try:
-                patch = solve_instance(client, inst, repo_config=repo_cfg, max_attempts=max_attempts)
-            except Exception as e:
-                print(f"  [error] {iid}: {e}", file=sys.stderr)
-                patch = ""
-
-            patch_file.write_text(patch)
-
-            pred_f.write(json.dumps({
-                "instance_id": iid,
-                "model": MODEL,
-                "patch": patch,
-            }) + "\n")
-            pred_f.flush()
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(_solve_one, inst): inst for inst in instances}
+            with tqdm(total=len(instances), unit="instance") as pbar:
+                for future in as_completed(futures):
+                    iid, patch = future.result()
+                    patch_file = out / f"{iid}.patch"
+                    patch_file.write_text(patch)
+                    with write_lock:
+                        pred_f.write(json.dumps({
+                            "instance_id": iid,
+                            "model": MODEL,
+                            "patch": patch,
+                        }) + "\n")
+                        pred_f.flush()
+                    pbar.update(1)
 
     print(f"Predictions written to {predictions_path}")
 

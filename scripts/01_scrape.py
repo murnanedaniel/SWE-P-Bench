@@ -55,6 +55,7 @@ def scrape_repo(
     token: str | None,
     out_dir: Path,
     max_instances: int,
+    min_date: str | None = None,
 ) -> int:
     """Scrape one repo and append new instances to candidates.jsonl.
 
@@ -78,6 +79,7 @@ def scrape_repo(
         require_test_patch=False,
         max_instances=max_instances,
         config=config,
+        min_date=min_date,
     )
 
     new_instances = [i for i in instances if i.get("instance_id") not in existing_ids]
@@ -119,6 +121,12 @@ def main() -> None:
         default="repos.yml",
         help="Path to repos.yml (default: repos.yml)",
     )
+    parser.add_argument(
+        "--min-date",
+        default=None,
+        help="Only include instances whose PR was merged on or after YYYY-MM-DD "
+             "(e.g. 2021-01-01). Avoids old commits that need cmake/Cython to install.",
+    )
     args = parser.parse_args()
 
     token = os.environ.get("GITHUB_TOKEN")
@@ -155,6 +163,7 @@ def main() -> None:
                 token=token,
                 out_dir=out_dir,
                 max_instances=args.max_instances,
+                min_date=args.min_date,
             )
         except Exception as exc:
             print(f"  ERROR scraping {repo}: {exc}", file=sys.stderr)
