@@ -1,1 +1,0 @@
-"While doing this, we should make the `storage=` optional if a storage is passed (not a string). It's quite obvious that hist.storage.X is a storage already."

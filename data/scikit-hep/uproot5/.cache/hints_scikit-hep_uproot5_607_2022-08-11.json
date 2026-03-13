@@ -1,1 +1,0 @@
-"Update: If I use another library (e.g. `'np'`), I get a different error message:\r\n```pycon\r\n>>> f['MGTree']['event'].array(library=\"np\")\r\n[...]\r\nattempting to get bytes 3221179793:3221179799\r\noutside expected range 0:11791 for this Chunk\r\nin file gerda-run0100-20190104T135505Z-cal-ged-tier1.root\r\nin object /MGTree;1\r\n```"

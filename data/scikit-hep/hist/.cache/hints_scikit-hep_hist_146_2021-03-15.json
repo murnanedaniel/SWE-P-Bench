@@ -1,1 +1,0 @@
-"Looks like a bug, thanks!\n\nAnd for your second point, I'd rather like to move to iminuit and drop the SciPy requirement entirely (except for now through mplhep). Happy to have help if you want to. ;)\n\nGreat. I'll find some time to make a PR then. :)"

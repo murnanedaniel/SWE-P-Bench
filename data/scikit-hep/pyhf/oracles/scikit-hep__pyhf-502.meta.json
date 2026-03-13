@@ -1,9 +1,0 @@
-{
-  "is_valid": false,
-  "error": "pip install failed: ERROR: Cannot uninstall PyYAML 6.0.1, RECORD file not found. Hint: The package was installed by debian.\n",
-  "oracle_tests": [],
-  "FAIL_TO_PASS": [],
-  "PASS_TO_PASS": [],
-  "before_results": {},
-  "after_results": {}
-}

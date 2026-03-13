@@ -1,1 +1,0 @@
-"> We might need a change in boost-histogram to make sure we can override this class everywhere.\r\n\r\nDoes boost-histogram support names for axes?\r\n\n\nNo, it's a Hist feature, boost-histogram only has `.metadata`. That's why we need a hist subclass of `AxesTuple`, that adds name support."

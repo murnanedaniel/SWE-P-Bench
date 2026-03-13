@@ -1,1 +1,0 @@
-"Thank you @manuelfs and @yipengsun for reporting. This is indeed a subtle but trivial bug. I have been aware of it in the past, when adding new models to the list of known models, and had fixed things; but I obviously missed these 2. I will provide a fix shortly. The issue has good to do with the way Lark does its efficient parsing."

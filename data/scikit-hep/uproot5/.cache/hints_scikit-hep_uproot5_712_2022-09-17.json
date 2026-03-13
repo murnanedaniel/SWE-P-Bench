@@ -1,1 +1,0 @@
-"It looks like we never close the executors, so their resources (threads) accumulate until exhaustion of the limit."
