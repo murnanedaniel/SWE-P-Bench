@@ -27,7 +27,7 @@ from openai import OpenAI
 
 load_dotenv()
 
-MODEL = "gpt-5-mini"
+MODEL = "gpt-5.4"
 
 SYSTEM_PROMPT = """\
 You are an expert Python software engineer and test writer specialising in \
@@ -48,6 +48,12 @@ Output ONLY a valid Python module. Do NOT include explanations, prose, or \
 markdown code fences. Start directly with `import` statements.
 
 Name each test function test_oracle_NNN (e.g., test_oracle_001, test_oracle_002).
+
+IMPORTANT: Generate tests for ONLY the behaviour the issue explicitly describes.
+If the diff contains changes not mentioned in the issue (e.g. an attribute rename, \
+a refactor, or an unrelated bug fix bundled alongside the main change), do NOT \
+write tests for those extra changes. Focus exclusively on what the reporter \
+asked for.
 """
 
 USER_TEMPLATE = """\
@@ -126,13 +132,20 @@ def generate_oracle_tests(
         prompt = prompt + "\n\n" + feedback
 
     print(f"  Calling {model} to generate {n} oracle tests…", file=sys.stderr)
+    # Reasoning models (gpt-5-mini, o*) do not accept temperature.
+    # Frontier models (gpt-5.4, gpt-4o, etc.) benefit from a low temperature.
+    _is_reasoning = model.endswith("-mini") or model.startswith("o")
+    api_kwargs: dict = {"max_completion_tokens": 8000}
+    if not _is_reasoning:
+        api_kwargs["temperature"] = 0.2
+
     response = client.chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
-        max_completion_tokens=8000,  # reasoning model: needs large budget for reasoning+output
+        **api_kwargs,
     )
 
     raw = response.choices[0].message.content or ""

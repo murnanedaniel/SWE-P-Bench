@@ -48,6 +48,7 @@ def _process_one(
     n: int,
     max_attempts: int,
     model: str,
+    force: bool = False,
 ) -> tuple[str, bool, str | None]:
     """Worker function: generate + validate oracle for one instance.
 
@@ -59,8 +60,8 @@ def _process_one(
     code_path = oracle_dir_path / f"{instance_id}.py"
     meta_path = oracle_dir_path / f"{instance_id}.meta.json"
 
-    # Already done?
-    if meta_path.exists():
+    # Already done? (skip unless --force)
+    if meta_path.exists() and not force:
         try:
             meta = json.loads(meta_path.read_text())
             return instance_id, meta.get("is_valid", False), None
@@ -119,13 +120,18 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        default="gpt-5-mini",
-        help="LLM model for oracle generation (default: gpt-5-mini)",
+        default="gpt-5.4",
+        help="LLM model for oracle generation (default: gpt-5.4)",
     )
     parser.add_argument(
         "--out-dir",
         default="data",
         help="Root data directory (default: data/)",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-generate oracles even if .py/.meta.json files already exist",
     )
     args = parser.parse_args()
 
@@ -144,12 +150,12 @@ def main() -> None:
     # oracle dir:   data/{owner}/{name}/oracles/
     oracle_dir = str(dataset_path.parent / "oracles")
 
-    # Filter to only instances not yet processed
+    # Filter to only instances not yet processed (--force bypasses this)
     pending = []
     already_done = 0
     for inst in instances:
         meta_path = Path(oracle_dir) / f"{inst['instance_id']}.meta.json"
-        if meta_path.exists():
+        if meta_path.exists() and not args.force:
             already_done += 1
         else:
             pending.append(inst)
@@ -191,6 +197,7 @@ def main() -> None:
                 args.n_tests,
                 args.max_attempts,
                 args.model,
+                args.force,
             ): inst["instance_id"]
             for inst in pending
         }

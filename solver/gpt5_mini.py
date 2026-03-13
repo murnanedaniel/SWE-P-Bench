@@ -168,6 +168,16 @@ def _normalize_bare_hunk_headers(patch: str) -> str:
     return "".join(result)
 
 
+def _strip_context_trailing_ws(patch: str) -> str:
+    """Remove trailing whitespace from blank/context lines.
+
+    LLMs (especially gpt-5.4) emit lines like ' \\n' (space + newline) on
+    blank context lines inside hunks.  ``git apply`` rejects these even with
+    ``--ignore-whitespace``, causing an otherwise-correct patch to fail.
+    """
+    return re.sub(r"^([ ].*?)\s+$", r"\1", patch, flags=re.MULTILINE)
+
+
 def _normalize_patch(patch: str) -> str:
     """
     Normalise LLM-generated patch output to standard unified diff.
@@ -184,6 +194,7 @@ def _normalize_patch(patch: str) -> str:
        hunk header.  We reconstruct proper headers so ``git apply --recount``
        can locate and apply each hunk.
     """
+    patch = _strip_context_trailing_ws(patch)
     stripped = patch.strip()
     if not stripped:
         return patch
