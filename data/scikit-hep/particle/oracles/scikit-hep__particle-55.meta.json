@@ -1,26 +1,26 @@
 {
   "oracle_tests": [
-    "test_oracle_001_particle_table_can_be_loaded_for_pdgid_query",
-    "test_oracle_002_particle_table_can_be_loaded_for_antiparticle_query",
-    "test_oracle_003_particle_table_supports_multiple_independent_queries"
+    "test_oracle_001_particle_data_csv_is_packaged",
+    "test_oracle_002_particle_query_uses_packaged_csv",
+    "test_oracle_003_antiparticle_query_uses_packaged_csv"
   ],
   "before_results": {
-    "test_oracle_001_particle_table_can_be_loaded_for_pdgid_query": true,
-    "test_oracle_002_particle_table_can_be_loaded_for_antiparticle_query": true,
-    "test_oracle_003_particle_table_supports_multiple_independent_queries": true
+    "test_oracle_001_particle_data_csv_is_packaged": true,
+    "test_oracle_002_particle_query_uses_packaged_csv": true,
+    "test_oracle_003_antiparticle_query_uses_packaged_csv": true
   },
   "after_results": {
-    "test_oracle_001_particle_table_can_be_loaded_for_pdgid_query": true,
-    "test_oracle_002_particle_table_can_be_loaded_for_antiparticle_query": true,
-    "test_oracle_003_particle_table_supports_multiple_independent_queries": true
+    "test_oracle_001_particle_data_csv_is_packaged": true,
+    "test_oracle_002_particle_query_uses_packaged_csv": true,
+    "test_oracle_003_antiparticle_query_uses_packaged_csv": true
   },
-  "before_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001_particle_table_can_be_loaded_for_pdgid_query PASSED [ 33%]\ntest_oracle_swepbench.py::test_oracle_002_particle_table_can_be_loaded_for_antiparticle_query PASSED [ 66%]\ntest_oracle_swepbench.py::test_oracle_003_particle_table_supports_multiple_independent_queries PASSED [100%]\n\n=============================== warnings summary ===============================\ntest_oracle_swepbench.py::test_oracle_001_particle_table_can_be_loaded_for_pdgid_query\n  /tmp/swepbench_val_d6t3wed9/repo/particle/particle/particle.py:90: DeprecationWarning: open_text is deprecated. Use files() instead. Refer to https://importlib-resources.readthedocs.io/en/latest/using.html#migrating-from-legacy for migration advice.\n    file_to_open = data.open_text(data, 'particle2018.csv') if filename is None else open(filename)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n========================= 3 passed, 1 warning in 0.09s =========================\n",
-  "after_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001_particle_table_can_be_loaded_for_pdgid_query PASSED [ 33%]\ntest_oracle_swepbench.py::test_oracle_002_particle_table_can_be_loaded_for_antiparticle_query PASSED [ 66%]\ntest_oracle_swepbench.py::test_oracle_003_particle_table_supports_multiple_independent_queries PASSED [100%]\n\n=============================== warnings summary ===============================\ntest_oracle_swepbench.py::test_oracle_001_particle_table_can_be_loaded_for_pdgid_query\n  /tmp/swepbench_val_d6t3wed9/repo/particle/particle/particle.py:90: DeprecationWarning: open_text is deprecated. Use files() instead. Refer to https://importlib-resources.readthedocs.io/en/latest/using.html#migrating-from-legacy for migration advice.\n    file_to_open = data.open_text(data, 'particle2018.csv') if filename is None else open(filename)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n========================= 3 passed, 1 warning in 0.09s =========================\n",
+  "before_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001_particle_data_csv_is_packaged PASSED [ 33%]\ntest_oracle_swepbench.py::test_oracle_002_particle_query_uses_packaged_csv PASSED [ 66%]\ntest_oracle_swepbench.py::test_oracle_003_antiparticle_query_uses_packaged_csv PASSED [100%]\n\n=============================== warnings summary ===============================\ntest_oracle_swepbench.py::test_oracle_002_particle_query_uses_packaged_csv\n  /tmp/swepbench_val_6xhgwhnv/repo/particle/particle/particle.py:90: DeprecationWarning: open_text is deprecated. Use files() instead. Refer to https://importlib-resources.readthedocs.io/en/latest/using.html#migrating-from-legacy for migration advice.\n    file_to_open = data.open_text(data, 'particle2018.csv') if filename is None else open(filename)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n========================= 3 passed, 1 warning in 0.09s =========================\n",
+  "after_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001_particle_data_csv_is_packaged PASSED [ 33%]\ntest_oracle_swepbench.py::test_oracle_002_particle_query_uses_packaged_csv PASSED [ 66%]\ntest_oracle_swepbench.py::test_oracle_003_antiparticle_query_uses_packaged_csv PASSED [100%]\n\n=============================== warnings summary ===============================\ntest_oracle_swepbench.py::test_oracle_002_particle_query_uses_packaged_csv\n  /tmp/swepbench_val_6xhgwhnv/repo/particle/particle/particle.py:90: DeprecationWarning: open_text is deprecated. Use files() instead. Refer to https://importlib-resources.readthedocs.io/en/latest/using.html#migrating-from-legacy for migration advice.\n    file_to_open = data.open_text(data, 'particle2018.csv') if filename is None else open(filename)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n========================= 3 passed, 1 warning in 0.08s =========================\n",
   "FAIL_TO_PASS": [],
   "PASS_TO_PASS": [
-    "test_oracle_001_particle_table_can_be_loaded_for_pdgid_query",
-    "test_oracle_002_particle_table_can_be_loaded_for_antiparticle_query",
-    "test_oracle_003_particle_table_supports_multiple_independent_queries"
+    "test_oracle_001_particle_data_csv_is_packaged",
+    "test_oracle_002_particle_query_uses_packaged_csv",
+    "test_oracle_003_antiparticle_query_uses_packaged_csv"
   ],
   "is_valid": false,
   "error": null

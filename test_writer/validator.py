@@ -168,6 +168,8 @@ def _run_oracle_tests(
         pytest_cmd + [
             str(test_file), "-v", "--tb=short", "--no-header",
             "-p", "no:cacheprovider",
+            "-p", "no:pytest-cov",        # disable coverage plugin
+            "-o", "addopts=",             # override repo's pytest.ini addopts
         ],
         cwd=str(repo_dir),
         timeout=120,

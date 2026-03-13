@@ -1,24 +1,24 @@
-import importlib
-
 import pytest
-import particle
+
+from particle import PDGID
 
 
-def test_oracle_001():
+def test_oracle_001_particle_exports_pythiaid():
+    import particle
+
     assert hasattr(particle, "PythiaID")
-    pythia_cls = particle.PythiaID
-    assert repr(pythia_cls(211)) == "<PythiaID: 211>"
+    pyid = particle.PythiaID(211)
+    assert pyid.to_pdgid() == PDGID(211)
 
 
-def test_oracle_002():
-    particle_mod = importlib.import_module("particle")
-    assert hasattr(particle_mod, "Pythia2PDGIDBiMap")
-    pdgid = particle_mod.PDGID(9010221)
-    pythiaid = particle_mod.Pythia2PDGIDBiMap[pdgid]
-    assert repr(pythiaid) == "<PythiaID: 10221>"
+def test_oracle_002_pythiaid_from_pdgid_nontrivial_translation():
+    from particle import PythiaID
+
+    assert PythiaID.from_pdgid(PDGID(9010221)) == PythiaID(10221)
 
 
-def test_oracle_003():
-    pythia_mod = importlib.import_module("particle.pythia")
-    pythiaid = pythia_mod.PythiaID(10221)
-    assert pythiaid.to_pdgid() == particle.PDGID(9010221)
+def test_oracle_003_bimap_bidirectional_nontrivial_translation():
+    from particle import Pythia2PDGIDBiMap, PythiaID
+
+    assert Pythia2PDGIDBiMap[PDGID(9010221)] == PythiaID(10221)
+    assert Pythia2PDGIDBiMap[PythiaID(10221)] == PDGID(9010221)

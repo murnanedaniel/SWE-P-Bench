@@ -114,6 +114,35 @@ repos:
     test_file_pattern: 'tests?/|test_.*\.py|.*_test\.py'
     test_dir: tests
 
+  scikit-hep/hist:
+    language: python
+    install_cmd: "pip install -e '.[dev]'"
+    install_extras:
+      - ".[dev,test,plot]"
+      - ".[dev,test]"
+      - ".[dev]"
+      - ".[test]"
+      - "."
+    test_cmd: "pytest"
+    test_framework: pytest
+    src_file_pattern: '\.(py)$'
+    test_file_pattern: 'tests?/|test_.*\.py|.*_test\.py'
+    test_dir: tests
+
+  scikit-hep/decaylanguage:
+    language: python
+    install_cmd: "pip install -e '.[dev]'"
+    install_extras:
+      - ".[dev,test]"
+      - ".[dev]"
+      - ".[test]"
+      - "."
+    test_cmd: "pytest"
+    test_framework: pytest
+    src_file_pattern: '\.(py)$'
+    test_file_pattern: 'tests?/|test_.*\.py|.*_test\.py'
+    test_dir: tests
+
   acts-project/acts:
     language: cpp
     docker_image: ghcr.io/acts-project/ubuntu2404:latest

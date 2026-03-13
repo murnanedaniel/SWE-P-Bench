@@ -1,19 +1,21 @@
+import importlib
+import os
+
 import pytest
 from particle import Particle
 
 
-def test_oracle_001_particle_table_can_be_loaded_for_pdgid_query():
+def test_oracle_001_particle_data_csv_is_packaged():
+    data_module = importlib.import_module("particle.data")
+    package_dir = os.path.dirname(data_module.__file__)
+    assert os.path.isfile(os.path.join(package_dir, "particle2018.csv"))
+
+
+def test_oracle_002_particle_query_uses_packaged_csv():
     p = Particle.from_pdgid(11)
     assert p.pdgid == 11
 
 
-def test_oracle_002_particle_table_can_be_loaded_for_antiparticle_query():
+def test_oracle_003_antiparticle_query_uses_packaged_csv():
     p = Particle.from_pdgid(-11)
     assert p.pdgid == -11
-
-
-def test_oracle_003_particle_table_supports_multiple_independent_queries():
-    first = Particle.from_pdgid(13)
-    second = Particle.from_pdgid(211)
-    assert first.pdgid == 13
-    assert second.pdgid == 211
