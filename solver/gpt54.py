@@ -365,7 +365,7 @@ def solve_instance(
                 model=MODEL,
                 messages=messages,
                 temperature=0.2,
-                max_tokens=8000,
+                max_completion_tokens=8000,
             )
             raw = response.choices[0].message.content or ""
             patch = _normalize_patch(raw)

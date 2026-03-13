@@ -26,13 +26,16 @@ the instructions in [CONTRIBUTING](#contributing).
 | `gold`            |        10 | 8/10          |        8 |       80.0%  |
 | `gpt5_mini_1shot` |        10 | 8/10          |        2 |       20.0%  |
 | `gpt5_mini_3shot` |        10 | 8/10          |        2 |       20.0%  |
+| `gpt54_1shot`     |        10 | 8/10          |        2 |       20.0%  |
 
 **Key observations:**
-- Both baselines now resolve 2/10 (20%) after patch apply improvements.
+- All three baselines resolve 2/10 (20%) — `gpt-5.4` matches `gpt-5-mini` on this sample.
 - `gpt5_mini_1shot` improved from 1→2 with the hunk-recount + progressive-fuzz fix
   (particle-49 now applies; previously "malformed patch" due to wrong hunk counts).
+- `gpt54_1shot` uses OpenAI's frontier `gpt-5.4` model (2026-03-05, 1.05M ctx); on this
+  10-instance sample the quality difference is not statistically significant.
 - Remaining failures are genuinely wrong patches (tests run but don't pass),
-  one empty patch (particle-24, 1shot), and the two known-bad instances.
+  one patch-apply failure (particle-41/49), and the two known-bad instances.
 - The patch apply pipeline now matches SWE-bench's fallback chain
   (`git apply` → `git apply --3way` → `patch --fuzz=5` → `patch --fuzz=8`)
   plus hunk-count normalisation for LLM-generated diffs.
@@ -69,5 +72,7 @@ python scripts/03_solve.py --dataset data/scikit-hep/particle/candidates.jsonl -
 python scripts/04_evaluate.py --dataset data/scikit-hep/particle/candidates.jsonl --gold --workers 4
 python scripts/04_evaluate.py --dataset data/scikit-hep/particle/candidates.jsonl --solver gpt5_mini_1shot --workers 4
 python scripts/04_evaluate.py --dataset data/scikit-hep/particle/candidates.jsonl --solver gpt5_mini_3shot --workers 4
-python scripts/05_report.py --solvers gold,gpt5_mini_1shot,gpt5_mini_3shot
+python scripts/03_solve.py --dataset data/scikit-hep/particle/candidates.jsonl --solver gpt54 --attempts 1
+python scripts/04_evaluate.py --dataset data/scikit-hep/particle/candidates.jsonl --solver gpt54_1shot --workers 4
+python scripts/05_report.py --solvers gold,gpt5_mini_1shot,gpt5_mini_3shot,gpt54_1shot
 ```
