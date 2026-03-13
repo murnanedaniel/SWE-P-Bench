@@ -1,0 +1,155 @@
+# SWE-P-Bench repository configuration registry.
+#
+# Each entry provides metadata needed to build, test, and evaluate patches
+# for that repo. Python repos use pip+pytest; C++ repos use Docker+CMake.
+#
+# Fields:
+#   language          : "python" or "cpp"
+#   install_cmd       : pip install command (Python only)
+#   install_extras    : fallback extras to try if install_cmd fails (Python only)
+#   test_cmd          : command to run tests
+#   test_framework    : pytest | unittest | catch2 | ctest | googletest
+#   src_file_pattern  : regex matching source (non-test) files
+#   test_file_pattern : regex matching test files
+#   test_dir          : directory to place generated oracle test files (Python only)
+#   docker_image      : Docker image for build environment (C++ only)
+#   build_cmd         : CMake/make build command (C++ only)
+
+repos:
+  scikit-hep/awkward:
+    language: python
+    install_cmd: "pip install -e '.[dev]'"
+    install_extras:
+      - ".[dev,test]"
+      - ".[dev]"
+      - ".[test]"
+      - "."
+    test_cmd: "pytest"
+    test_framework: pytest
+    src_file_pattern: '\.(py)$'
+    test_file_pattern: 'tests?/|test_.*\.py|.*_test\.py'
+    test_dir: tests
+
+  scikit-hep/uproot5:
+    language: python
+    install_cmd: "pip install -e '.[dev]'"
+    install_extras:
+      - ".[dev,test]"
+      - ".[dev]"
+      - ".[test]"
+      - "."
+    test_cmd: "pytest"
+    test_framework: pytest
+    src_file_pattern: '\.(py)$'
+    test_file_pattern: 'tests?/|test_.*\.py|.*_test\.py'
+    test_dir: tests
+
+  CoffeaTeam/coffea:
+    language: python
+    install_cmd: "pip install -e '.[dev]'"
+    install_extras:
+      - ".[dev,test]"
+      - ".[dev]"
+      - ".[test,dask]"
+      - "."
+    test_cmd: "pytest"
+    test_framework: pytest
+    src_file_pattern: '\.(py)$'
+    test_file_pattern: 'tests?/|test_.*\.py|.*_test\.py'
+    test_dir: tests
+
+  scikit-hep/pyhf:
+    language: python
+    install_cmd: "pip install -e '.[dev]'"
+    install_extras:
+      - ".[dev,test]"
+      - ".[dev]"
+      - ".[test]"
+      - "."
+    test_cmd: "pytest"
+    test_framework: pytest
+    src_file_pattern: '\.(py)$'
+    test_file_pattern: 'tests?/|test_.*\.py|.*_test\.py'
+    test_dir: tests
+
+  scikit-hep/iminuit:
+    language: python
+    install_cmd: "pip install -e '.[dev]'"
+    install_extras:
+      - ".[dev,test]"
+      - ".[dev]"
+      - ".[test]"
+      - "."
+    test_cmd: "pytest"
+    test_framework: pytest
+    src_file_pattern: '\.(py)$'
+    test_file_pattern: 'tests?/|test_.*\.py|.*_test\.py'
+    test_dir: tests
+
+  zfit/zfit:
+    language: python
+    install_cmd: "pip install -e '.[dev]'"
+    install_extras:
+      - ".[dev,test]"
+      - ".[dev]"
+      - ".[test]"
+      - "."
+    test_cmd: "pytest"
+    test_framework: pytest
+    src_file_pattern: '\.(py)$'
+    test_file_pattern: 'tests?/|test_.*\.py|.*_test\.py'
+    test_dir: tests
+
+  scikit-hep/particle:
+    language: python
+    install_cmd: "pip install -e '.[dev]'"
+    install_extras:
+      - ".[dev,test]"
+      - ".[dev]"
+      - ".[test]"
+      - "."
+    test_cmd: "pytest"
+    test_framework: pytest
+    src_file_pattern: '\.(py)$'
+    test_file_pattern: 'tests?/|test_.*\.py|.*_test\.py'
+    test_dir: tests
+
+  scikit-hep/hist:
+    language: python
+    install_cmd: "pip install -e '.[dev]'"
+    install_extras:
+      - ".[dev,test,plot]"
+      - ".[dev,test]"
+      - ".[dev]"
+      - ".[test]"
+      - "."
+    test_cmd: "pytest"
+    test_framework: pytest
+    src_file_pattern: '\.(py)$'
+    test_file_pattern: 'tests?/|test_.*\.py|.*_test\.py'
+    test_dir: tests
+
+  scikit-hep/decaylanguage:
+    language: python
+    install_cmd: "pip install -e '.[dev]'"
+    install_extras:
+      - ".[dev,test]"
+      - ".[dev]"
+      - ".[test]"
+      - "."
+    test_cmd: "pytest"
+    test_framework: pytest
+    src_file_pattern: '\.(py)$'
+    test_file_pattern: 'tests?/|test_.*\.py|.*_test\.py'
+    test_dir: tests
+
+  acts-project/acts:
+    language: cpp
+    docker_image: ghcr.io/acts-project/ubuntu2404:latest
+    build_cmd: >-
+      cmake -B build -S . -DACTS_BUILD_UNITTESTS=ON -DCMAKE_BUILD_TYPE=Release
+      && cmake --build build --parallel 4
+    test_cmd: "ctest --test-dir build -R '.*' --output-on-failure"
+    test_framework: catch2
+    src_file_pattern: '\.(cpp|hpp|h|ipp|cuh|cu)$'
+    test_file_pattern: '(Tests?/|tests?/|_[Tt]est\.|[Tt]est_|/[Tt]est[^/]*\.|UnitTest|IntegrationTest)'
