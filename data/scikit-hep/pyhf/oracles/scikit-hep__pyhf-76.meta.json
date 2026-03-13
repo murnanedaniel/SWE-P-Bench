@@ -1,0 +1,27 @@
+{
+  "oracle_tests": [
+    "test_oracle_001",
+    "test_oracle_002",
+    "test_oracle_003"
+  ],
+  "before_results": {
+    "test_oracle_001": false,
+    "test_oracle_002": false,
+    "test_oracle_003": false
+  },
+  "after_results": {
+    "test_oracle_001": true,
+    "test_oracle_002": true,
+    "test_oracle_003": true
+  },
+  "before_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001 FAILED                         [ 33%]\ntest_oracle_swepbench.py::test_oracle_002 FAILED                         [ 66%]\ntest_oracle_swepbench.py::test_oracle_003 FAILED                         [100%]\n\n=================================== FAILURES ===================================\n_______________________________ test_oracle_001 ________________________________\ntest_oracle_swepbench.py:5: in test_oracle_001\n    assert pyhf.exceptions.InvalidModifier.__doc__ is not None\nE   AssertionError: assert None is not None\nE    +  where None = <class 'pyhf.exceptions.InvalidModifier'>.__doc__\nE    +    where <class 'pyhf.exceptions.InvalidModifier'> = <module 'pyhf.exceptions' from '/tmp/swepbench_val_4icpgkne/repo/pyhf/exceptions/__init__.py'>.InvalidModifier\nE    +      where <module 'pyhf.exceptions' from '/tmp/swepbench_val_4icpgkne/repo/pyhf/exceptions/__init__.py'> = pyhf.exceptions\n_______________________________ test_oracle_002 ________________________________\ntest_oracle_swepbench.py:11: in test_oracle_002\n    assert pyhf.exceptions.InvalidInterpCode.__doc__ is not None\nE   AssertionError: assert None is not None\nE    +  where None = <class 'pyhf.exceptions.InvalidInterpCode'>.__doc__\nE    +    where <class 'pyhf.exceptions.InvalidInterpCode'> = <module 'pyhf.exceptions' from '/tmp/swepbench_val_4icpgkne/repo/pyhf/exceptions/__init__.py'>.InvalidInterpCode\nE    +      where <module 'pyhf.exceptions' from '/tmp/swepbench_val_4icpgkne/repo/pyhf/exceptions/__init__.py'> = pyhf.exceptions\n_______________________________ test_oracle_003 ________________________________\ntest_oracle_swepbench.py:16: in test_oracle_003\n    assert pyhf.modifiers.__all__ == [\nE   AssertionError: assert [<class 'pyhf...r.staterror'>] == ['histosys', ..., 'staterror']\nE     \nE     At index 0 diff: <class 'pyhf.modifiers.histosys.histosys'> != 'histosys'\nE     \nE     Full diff:\nE       [\nE     -     'histosys',\nE     -     'normfactor',...\nE     \nE     ...Full output truncated (11 lines hidden), use '-vv' to show\n=============================== warnings summary ===============================\npyhf/__init__.py:313\n  /tmp/swepbench_val_4icpgkne/repo/pyhf/__init__.py:313: DeprecationWarning: invalid escape sequence '\\m'\n    \"\"\"\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED test_oracle_swepbench.py::test_oracle_001 - AssertionError: assert Non...\nFAILED test_oracle_swepbench.py::test_oracle_002 - AssertionError: assert Non...\nFAILED test_oracle_swepbench.py::test_oracle_003 - AssertionError: assert [<c...\n========================= 3 failed, 1 warning in 2.41s =========================\n",
+  "after_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001 PASSED                         [ 33%]\ntest_oracle_swepbench.py::test_oracle_002 PASSED                         [ 66%]\ntest_oracle_swepbench.py::test_oracle_003 PASSED                         [100%]\n\n============================== 3 passed in 2.06s ===============================\n",
+  "FAIL_TO_PASS": [
+    "test_oracle_001",
+    "test_oracle_002",
+    "test_oracle_003"
+  ],
+  "PASS_TO_PASS": [],
+  "is_valid": true,
+  "error": null
+}

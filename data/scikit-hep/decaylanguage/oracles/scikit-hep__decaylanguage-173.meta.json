@@ -1,0 +1,27 @@
+{
+  "oracle_tests": [
+    "test_oracle_001",
+    "test_oracle_002",
+    "test_oracle_003"
+  ],
+  "before_results": {
+    "test_oracle_001": true,
+    "test_oracle_002": true,
+    "test_oracle_003": true
+  },
+  "after_results": {
+    "test_oracle_001": true,
+    "test_oracle_002": true,
+    "test_oracle_003": true
+  },
+  "before_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001 PASSED                         [ 33%]\ntest_oracle_swepbench.py::test_oracle_002 PASSED                         [ 66%]\ntest_oracle_swepbench.py::test_oracle_003 PASSED                         [100%]\n\n============================== 3 passed in 0.32s ===============================\n",
+  "after_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001 PASSED                         [ 33%]\ntest_oracle_swepbench.py::test_oracle_002 PASSED                         [ 66%]\ntest_oracle_swepbench.py::test_oracle_003 PASSED                         [100%]\n\n============================== 3 passed in 0.29s ===============================\n",
+  "FAIL_TO_PASS": [],
+  "PASS_TO_PASS": [
+    "test_oracle_001",
+    "test_oracle_002",
+    "test_oracle_003"
+  ],
+  "is_valid": false,
+  "error": null
+}

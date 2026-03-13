@@ -1,0 +1,9 @@
+{
+  "is_valid": false,
+  "error": "pip install failed:  'name'\n  WARNING: Skipping /usr/local/lib/python3.11/dist-packages/Particle-0.6.2.dist-info due to invalid metadata entry 'name'\nWARNING: Skipping /usr/local/lib/python3.11/dist-packages/Particle-0.6.2.dist-info due to invalid metadata entry 'name'\n    WARNING: Skipping /usr/local/lib/python3.11/dist-packages/Particle-0.6.2.dist-info due to invalid metadata entry 'name'\nERROR: Could not install packages due to an OSError: [Errno 2] No such file or directory: '/tmp/swepbench_val_occx8ebv/repo'\n\n",
+  "oracle_tests": [],
+  "FAIL_TO_PASS": [],
+  "PASS_TO_PASS": [],
+  "before_results": {},
+  "after_results": {}
+}

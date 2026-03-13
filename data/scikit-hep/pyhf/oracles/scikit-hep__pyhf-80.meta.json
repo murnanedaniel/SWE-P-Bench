@@ -1,0 +1,27 @@
+{
+  "oracle_tests": [
+    "test_oracle_001",
+    "test_oracle_002",
+    "test_oracle_003"
+  ],
+  "before_results": {
+    "test_oracle_001": false,
+    "test_oracle_002": false,
+    "test_oracle_003": false
+  },
+  "after_results": {
+    "test_oracle_001": true,
+    "test_oracle_002": true,
+    "test_oracle_003": true
+  },
+  "before_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001 FAILED                         [ 33%]\ntest_oracle_swepbench.py::test_oracle_002 FAILED                         [ 66%]\ntest_oracle_swepbench.py::test_oracle_003 FAILED                         [100%]\n\n=================================== FAILURES ===================================\n_______________________________ test_oracle_001 ________________________________\ntest_oracle_swepbench.py:28: in test_oracle_001\n    assert hasattr(pyhf, \"mxnet_backend\") and callable(pyhf.mxnet_backend)\nE   AssertionError: assert (False)\nE    +  where False = hasattr(<module 'pyhf' from '/tmp/swepbench_val_occx8ebv/repo/pyhf/__init__.py'>, 'mxnet_backend')\n_______________________________ test_oracle_002 ________________________________\ntest_oracle_swepbench.py:51: in test_oracle_002\n    backend = pyhf.mxnet_backend()\n              ^^^^^^^^^^^^^^^^^^\nE   AttributeError: module 'pyhf' has no attribute 'mxnet_backend'\n_______________________________ test_oracle_003 ________________________________\ntest_oracle_swepbench.py:67: in test_oracle_003\n    mod = importlib.import_module(\"pyhf.tensor.mxnet_backend\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/usr/lib/python3.11/importlib/__init__.py:126: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n<frozen importlib._bootstrap>:1204: in _gcd_import\n    ???\n<frozen importlib._bootstrap>:1176: in _find_and_load\n    ???\n<frozen importlib._bootstrap>:1140: in _find_and_load_unlocked\n    ???\nE   ModuleNotFoundError: No module named 'pyhf.tensor.mxnet_backend'\n=========================== short test summary info ============================\nFAILED test_oracle_swepbench.py::test_oracle_001 - AssertionError: assert (Fa...\nFAILED test_oracle_swepbench.py::test_oracle_002 - AttributeError: module 'py...\nFAILED test_oracle_swepbench.py::test_oracle_003 - ModuleNotFoundError: No mo...\n============================== 3 failed in 0.94s ===============================\n",
+  "after_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001 PASSED                         [ 33%]\ntest_oracle_swepbench.py::test_oracle_002 PASSED                         [ 66%]\ntest_oracle_swepbench.py::test_oracle_003 PASSED                         [100%]\n\n============================== 3 passed in 0.88s ===============================\n",
+  "FAIL_TO_PASS": [
+    "test_oracle_001",
+    "test_oracle_002",
+    "test_oracle_003"
+  ],
+  "PASS_TO_PASS": [],
+  "is_valid": true,
+  "error": null
+}

@@ -1,0 +1,27 @@
+{
+  "oracle_tests": [
+    "test_oracle_001",
+    "test_oracle_002",
+    "test_oracle_003"
+  ],
+  "before_results": {
+    "test_oracle_001": false,
+    "test_oracle_002": false,
+    "test_oracle_003": false
+  },
+  "after_results": {
+    "test_oracle_001": true,
+    "test_oracle_002": true,
+    "test_oracle_003": true
+  },
+  "before_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001 FAILED                         [ 33%]\ntest_oracle_swepbench.py::test_oracle_002 FAILED                         [ 66%]\ntest_oracle_swepbench.py::test_oracle_003 FAILED                         [100%]\n\n=================================== FAILURES ===================================\n_______________________________ test_oracle_001 ________________________________\ntest_oracle_swepbench.py:28: in test_oracle_001\n    assert out.count(\";\") == 6\nE   AssertionError: assert 2 == 6\nE    +  where 2 = <built-in method count of str object at 0x7fa496675e70>(';')\nE    +    where <built-in method count of str object at 0x7fa496675e70> = '  0.01              MyD*-   MyD_s*+ pi+ pi-     PHOTOS ISGW2;\\n  0.001             MyD_2*- MyD_s*+ pi+ pi-     PHOTOS ISGW2;\\n'.count\n_______________________________ test_oracle_002 ________________________________\ntest_oracle_swepbench.py:40: in test_oracle_002\n    assert \"MyD*- MyD_s+ pi0\" in out\nE   AssertionError: assert 'MyD*- MyD_s+ pi0' in '  0.01              MyD*-   MyD_s*+ pi+ pi-     PHOTOS ISGW2;\\n  0.001             MyD_2*- MyD_s*+ pi+ pi-     PHOTOS ISGW2;\\n'\n_______________________________ test_oracle_003 ________________________________\ntest_oracle_swepbench.py:52: in test_oracle_003\n    assert out.count(\";\") == 6\nE   AssertionError: assert 2 == 6\nE    +  where 2 = <built-in method count of str object at 0x7fa496fd63f0>(';')\nE    +    where <built-in method count of str object at 0x7fa496fd63f0> = '  0.9090909091      MyD*-   MyD_s*+ pi+ pi-     PHOTOS ISGW2;\\n  0.09090909091     MyD_2*- MyD_s*+ pi+ pi-     PHOTOS ISGW2;\\n'.count\n=========================== short test summary info ============================\nFAILED test_oracle_swepbench.py::test_oracle_001 - AssertionError: assert 2 == 6\nFAILED test_oracle_swepbench.py::test_oracle_002 - AssertionError: assert 'My...\nFAILED test_oracle_swepbench.py::test_oracle_003 - AssertionError: assert 2 == 6\n============================== 3 failed in 0.33s ===============================\n",
+  "after_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001 PASSED                         [ 33%]\ntest_oracle_swepbench.py::test_oracle_002 PASSED                         [ 66%]\ntest_oracle_swepbench.py::test_oracle_003 PASSED                         [100%]\n\n============================== 3 passed in 0.40s ===============================\n",
+  "FAIL_TO_PASS": [
+    "test_oracle_001",
+    "test_oracle_002",
+    "test_oracle_003"
+  ],
+  "PASS_TO_PASS": [],
+  "is_valid": true,
+  "error": null
+}

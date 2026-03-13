@@ -1,0 +1,25 @@
+{
+  "oracle_tests": [
+    "test_oracle_001",
+    "test_oracle_002",
+    "test_oracle_003"
+  ],
+  "before_results": {
+    "test_oracle_001": false,
+    "test_oracle_002": false,
+    "test_oracle_003": false
+  },
+  "after_results": {
+    "test_oracle_001": true,
+    "test_oracle_002": false,
+    "test_oracle_003": false
+  },
+  "before_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001 FAILED                         [ 33%]\ntest_oracle_swepbench.py::test_oracle_002 FAILED                         [ 66%]\ntest_oracle_swepbench.py::test_oracle_003 FAILED                         [100%]\n\n=================================== FAILURES ===================================\n_______________________________ test_oracle_001 ________________________________\ntest_oracle_swepbench.py:64: in test_oracle_001\n    assert hasattr(pyhf, \"tflow_optimizer\"), \"pyhf.tflow_optimizer should be available after the patch\"\nE   AssertionError: pyhf.tflow_optimizer should be available after the patch\nE   assert False\nE    +  where False = hasattr(pyhf, 'tflow_optimizer')\n_______________________________ test_oracle_002 ________________________________\ntest_oracle_swepbench.py:93: in test_oracle_002\n    opt = pyhf.tflow_optimizer(tb)\n          ^^^^^^^^^^^^^^^^^^^^\nE   AttributeError: module 'pyhf' has no attribute 'tflow_optimizer'\n_______________________________ test_oracle_003 ________________________________\ntest_oracle_swepbench.py:126: in test_oracle_003\n    opt = pyhf.tflow_optimizer(tb)\n          ^^^^^^^^^^^^^^^^^^^^\nE   AttributeError: module 'pyhf' has no attribute 'tflow_optimizer'\n=========================== short test summary info ============================\nFAILED test_oracle_swepbench.py::test_oracle_001 - AssertionError: pyhf.tflow...\nFAILED test_oracle_swepbench.py::test_oracle_002 - AttributeError: module 'py...\nFAILED test_oracle_swepbench.py::test_oracle_003 - AttributeError: module 'py...\n============================== 3 failed in 1.82s ===============================\n",
+  "after_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001 PASSED                         [ 33%]\ntest_oracle_swepbench.py::test_oracle_002 FAILED                         [ 66%]\ntest_oracle_swepbench.py::test_oracle_003 FAILED                         [100%]\n\n=================================== FAILURES ===================================\n_______________________________ test_oracle_002 ________________________________\ntest_oracle_swepbench.py:94: in test_oracle_002\n    result = opt.unconstrained_bestfit(objective, data=[0.0], pdf=pdf, init_pars=init_pars, par_bounds=par_bounds)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\npyhf/optimize/opt_tflow.py:17: in unconstrained_bestfit\n    update    = tf.transpose(tf.matmul(invhess, tf.transpose(tf.stack([gradient]))))[0]\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE   TypeError: 'NoneType' object is not subscriptable\n_______________________________ test_oracle_003 ________________________________\ntest_oracle_swepbench.py:127: in test_oracle_003\n    result = opt.constrained_bestfit(objective, constrained_mu, data=[0.0], pdf=pdf, init_pars=init_pars, par_bounds=par_bounds)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\npyhf/optimize/opt_tflow.py:41: in constrained_bestfit\n    update    = tf.transpose(tf.matmul(invhess, tf.transpose(tf.stack([gradient]))))[0]\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE   TypeError: 'NoneType' object is not subscriptable\n=========================== short test summary info ============================\nFAILED test_oracle_swepbench.py::test_oracle_002 - TypeError: 'NoneType' obje...\nFAILED test_oracle_swepbench.py::test_oracle_003 - TypeError: 'NoneType' obje...\n========================= 2 failed, 1 passed in 1.14s ==========================\n",
+  "FAIL_TO_PASS": [
+    "test_oracle_001"
+  ],
+  "PASS_TO_PASS": [],
+  "is_valid": false,
+  "error": null
+}
