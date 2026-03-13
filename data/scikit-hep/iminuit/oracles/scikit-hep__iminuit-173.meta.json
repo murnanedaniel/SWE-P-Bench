@@ -1,0 +1,9 @@
+{
+  "is_valid": false,
+  "error": "git checkout 24a04634 failed: fatal: reference is not a tree: 24a0463457ca9ce1396383b4abed7b6d7497115e\n",
+  "oracle_tests": [],
+  "FAIL_TO_PASS": [],
+  "PASS_TO_PASS": [],
+  "before_results": {},
+  "after_results": {}
+}

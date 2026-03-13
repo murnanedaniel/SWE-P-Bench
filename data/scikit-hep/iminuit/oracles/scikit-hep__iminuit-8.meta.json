@@ -1,0 +1,9 @@
+{
+  "is_valid": false,
+  "error": "pip install failed: File \"/tmp/swepbench_val_taotz2mr/repo/setup.py\", line 17, in <module>\n          execfile('iminuit/info.py')\n          ^^^^^^^^\n      NameError: name 'execfile' is not defined\n      [end of output]\n  \n  note: This error originates from a subprocess, and is likely not a problem with pip.\nerror: metadata-generation-failed\n\n\u00d7 Encountered error while generating package metadata.\n\u2570\u2500> See above for output.\n\nnote: This is an issue with the package mentioned above, not pip.\nhint: See above for details.\n",
+  "oracle_tests": [],
+  "FAIL_TO_PASS": [],
+  "PASS_TO_PASS": [],
+  "before_results": {},
+  "after_results": {}
+}
