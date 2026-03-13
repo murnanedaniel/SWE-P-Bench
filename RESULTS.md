@@ -17,16 +17,16 @@ the instructions in [CONTRIBUTING](#contributing).
 | Solver            | Repo                          | Instances | Resolved | Rate   |
 |-------------------|-------------------------------|----------:|---------:|-------:|
 | `gold`            | scikit-hep/particle           |        47 |       30 | 63.8%  |
-| `gold`            | scikit-hep/pyhf               |        17 |        5 | 29.4%  |
+| `gold`            | scikit-hep/pyhf               |        42 |        9 | 21.4%  |
 | `gold`            | scikit-hep/decaylanguage      |        18 |        3 | 16.7%  |
-| **`gold` TOTAL**  |                               |    **82** |   **38** | **46.3%** |
+| **`gold` TOTAL**  |                               |   **107** |   **42** | **39.3%** |
 | `gpt5_mini_1shot` | scikit-hep/particle           |        47 |        2 |  4.3%  |
 | `gpt5_mini_1shot` | scikit-hep/pyhf               |        16 |        0 |  0.0%  |
 | **`gpt5_mini_1shot` TOTAL** |                   |    **63** |    **2** |  **3.2%** |
 
 **Key observations:**
-- Gold resolves 46.3% across 82 instances, confirming strong oracle quality for particle (63.8%)
-  and weaker but meaningful coverage for pyhf (29.4%) and decaylanguage (16.7%).
+- Gold resolves 39.3% across 107 instances: strong for particle (63.8%), moderate for pyhf
+  (21.4%) and decaylanguage (16.7%).
 - `gpt5_mini_1shot` resolved 2/63 (3.2%). The low rate is primarily due to OpenAI API quota
   exhaustion mid-run: most new particle patches were empty (failed API calls) and pyhf patches
   had apply/install failures. The 2 resolved instances came from the 7 pre-existing patches.
