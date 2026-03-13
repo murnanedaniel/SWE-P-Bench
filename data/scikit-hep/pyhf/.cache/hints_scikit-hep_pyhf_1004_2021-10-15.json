@@ -1,0 +1,1 @@
+"The default backend can be set w/o changing the rest of the code. It'll help with the diff'able case for sure. My first guess is you should be able to do\r\n\r\n```python\r\nimport pyhf\r\npyhf.default_backend = pyhf.tensor.tensorflow_backend(precision='64b')\r\n```\r\n\r\nat the top of your code? I'm not 100% sure one wants an updated API for this, but..."

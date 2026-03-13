@@ -1,0 +1,27 @@
+{
+  "oracle_tests": [
+    "test_oracle_001",
+    "test_oracle_002",
+    "test_oracle_003"
+  ],
+  "before_results": {
+    "test_oracle_001": false,
+    "test_oracle_002": false,
+    "test_oracle_003": false
+  },
+  "after_results": {
+    "test_oracle_001": true,
+    "test_oracle_002": true,
+    "test_oracle_003": true
+  },
+  "before_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001 FAILED                         [ 33%]\ntest_oracle_swepbench.py::test_oracle_002 FAILED                         [ 66%]\ntest_oracle_swepbench.py::test_oracle_003 FAILED                         [100%]\n\n=================================== FAILURES ===================================\n_______________________________ test_oracle_001 ________________________________\ntest_oracle_swepbench.py:6: in test_oracle_001\n    assert p.latex_name == 'Unknown'\nE   AssertionError: assert '' == 'Unknown'\nE     \nE     - Unknown\n_______________________________ test_oracle_002 ________________________________\ntest_oracle_swepbench.py:11: in test_oracle_002\n    assert p.charge is None\n           ^^^^^^^^\nparticle/particle/particle.py:274: in charge\n    return self.three_charge / 3\n           ^^^^^^^^^^^^^^^^^^^^^\nE   TypeError: unsupported operand type(s) for /: 'NoneType' and 'int'\n_______________________________ test_oracle_003 ________________________________\ntest_oracle_swepbench.py:16: in test_oracle_003\n    assert p.latex_name != ''\nE   AssertionError: assert '' != ''\nE    +  where '' = <Particle: name='Unknown', pdgid=0, mass=0.0 MeV>.latex_name\n=========================== short test summary info ============================\nFAILED test_oracle_swepbench.py::test_oracle_001 - AssertionError: assert '' ...\nFAILED test_oracle_swepbench.py::test_oracle_002 - TypeError: unsupported ope...\nFAILED test_oracle_swepbench.py::test_oracle_003 - AssertionError: assert '' ...\n============================== 3 failed in 0.07s ===============================\n",
+  "after_output": "============================= test session starts ==============================\ncollecting ... collected 3 items\n\ntest_oracle_swepbench.py::test_oracle_001 PASSED                         [ 33%]\ntest_oracle_swepbench.py::test_oracle_002 PASSED                         [ 66%]\ntest_oracle_swepbench.py::test_oracle_003 PASSED                         [100%]\n\n============================== 3 passed in 0.06s ===============================\n",
+  "FAIL_TO_PASS": [
+    "test_oracle_001",
+    "test_oracle_002",
+    "test_oracle_003"
+  ],
+  "PASS_TO_PASS": [],
+  "is_valid": true,
+  "error": null
+}

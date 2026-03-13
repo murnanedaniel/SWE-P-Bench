@@ -1,0 +1,1 @@
+"diff --git a/docker/Dockerfile b/docker/Dockerfile\nindex 5422498885..f362c36dc0 100644\n--- a/docker/Dockerfile\n+++ b/docker/Dockerfile\n@@ -1,4 +1,4 @@\n-FROM alectolytic/scipy\n+FROM matthewfeickert/python3-scipy-alpine:scipy-1.2.1\n COPY . /code\n RUN cd /code && \\\n     apk add --no-cache git && \\\n"

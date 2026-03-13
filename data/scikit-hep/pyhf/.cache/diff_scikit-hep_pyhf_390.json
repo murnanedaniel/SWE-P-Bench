@@ -1,0 +1,1 @@
+"diff --git a/binder/postBuild b/binder/postBuild\nindex 7cba0e8d80..65725d6550 100644\n--- a/binder/postBuild\n+++ b/binder/postBuild\n@@ -1 +1 @@\n-pip install --ignore-installed -U -e .[complete]\n+pip install --upgrade -e .[complete]\n"

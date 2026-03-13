@@ -287,6 +287,7 @@ def scrape(
     require_test_patch: bool = False,
     max_instances: int = 0,
     config: dict | None = None,
+    min_date: str | None = None,
 ) -> list[dict]:
     """
     Scrape candidate instances from *repo* using the issue-first strategy.
@@ -301,6 +302,9 @@ def scrape(
         config:             Per-repo config dict (from load_repo_config()).
                             Used for src/test file patterns. Defaults loaded from
                             repos.yml if not provided.
+        min_date:           ISO-8601 date string (e.g. "2021-01-01"). Instances
+                            whose PR was merged before this date are skipped.
+                            Avoids old commits that need cmake/Cython to install.
 
     Returns:
         List of dataset records (no FAIL_TO_PASS / PASS_TO_PASS yet).
@@ -386,6 +390,10 @@ def scrape(
 
             if not pr_meta.get("merged_at"):
                 bar.set_postfix(status="unmerged")
+                continue
+
+            if min_date and pr_meta.get("merged_at", "") < min_date:
+                bar.set_postfix(status="too_old")
                 continue
 
             pr_created = pr_meta.get("created_at", "")

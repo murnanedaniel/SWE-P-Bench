@@ -1,0 +1,1 @@
+"diff --git a/.travis.yml b/.travis.yml\nindex 7269c0e3dd..93f2dc89f5 100644\n--- a/.travis.yml\n+++ b/.travis.yml\n@@ -22,7 +22,7 @@ stages:\n   - name: docs\n     if: (branch = master)\n   - name: deploy\n-    if: (branch = master) AND (NOT (type IN (pull_request)))\n+    if: (tag =~ v[0-9\\.]*)\n \n env:\n   global:\n"
