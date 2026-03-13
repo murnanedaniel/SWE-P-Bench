@@ -5,6 +5,38 @@ the instructions in [CONTRIBUTING](#contributing).
 
 ---
 
+## Production Run — `scikit-hep/{particle,pyhf,decaylanguage}` (filtered datasets)
+
+**Date:** 2026-03-13
+**Repos:** `scikit-hep/particle`, `scikit-hep/pyhf`, `scikit-hep/decaylanguage`
+**Instances (candidates_filtered.jsonl):** 46 / 255 / 18 respectively
+**Valid oracles:** 46/46 (particle), 34/255 (pyhf), 18/18 (decaylanguage)
+
+### Overall Results
+
+| Solver            | Repo                          | Instances | Resolved | Rate   |
+|-------------------|-------------------------------|----------:|---------:|-------:|
+| `gold`            | scikit-hep/particle           |        47 |       30 | 63.8%  |
+| `gold`            | scikit-hep/pyhf               |        17 |        5 | 29.4%  |
+| `gold`            | scikit-hep/decaylanguage      |        18 |        3 | 16.7%  |
+| **`gold` TOTAL**  |                               |    **82** |   **38** | **46.3%** |
+| `gpt5_mini_1shot` | scikit-hep/particle           |        47 |        2 |  4.3%  |
+| `gpt5_mini_1shot` | scikit-hep/pyhf               |        16 |        0 |  0.0%  |
+| **`gpt5_mini_1shot` TOTAL** |                   |    **63** |    **2** |  **3.2%** |
+
+**Key observations:**
+- Gold resolves 46.3% across 82 instances, confirming strong oracle quality for particle (63.8%)
+  and weaker but meaningful coverage for pyhf (29.4%) and decaylanguage (16.7%).
+- `gpt5_mini_1shot` resolved 2/63 (3.2%). The low rate is primarily due to OpenAI API quota
+  exhaustion mid-run: most new particle patches were empty (failed API calls) and pyhf patches
+  had apply/install failures. The 2 resolved instances came from the 7 pre-existing patches.
+- pyhf is harder: only 34/255 filtered instances have valid oracles (~13%), and patch-apply
+  failures are common due to complex diffs. More oracle coverage needed.
+- Next steps: (1) add more oracle coverage for pyhf/decaylanguage, (2) re-run solver with
+  sufficient quota, (3) evaluate additional solvers (gpt5_mini_3shot, gpt54_1shot).
+
+---
+
 ## Mini Run — `scikit-hep/particle` (10 instances)
 
 **Date:** 2026-03-12
