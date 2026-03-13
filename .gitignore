@@ -9,6 +9,7 @@ dist/
 build/
 *.egg
 data/acts/candidates.jsonl
+data/scikit-hep/
 results/
 *.patch
 .scraper_cache/
