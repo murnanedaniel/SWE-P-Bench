@@ -356,16 +356,52 @@ Each instance in `validated_benchmark.jsonl` has all original SWE-bench fields p
 
 ---
 
-## 10. Open Questions
+## 10. Solver Model Strategy: Claude Code (Subscription) vs. API
+
+### Why not the OpenAI/Anthropic API?
+
+Early baseline runs used `gpt-5-mini` via the OpenAI API. The primary problems:
+- **Quota exhaustion**: API rate limits truncated solver runs mid-batch; many patches came back
+  empty because the API quota ran out.
+- **Per-token cost**: At scale (~840 candidates × ~10k tokens each) a single oracle-generation
+  pass costs $200–400 at Opus/GPT-4o pricing. Running multiple solvers multiplies this further.
+
+### Recommended approach: Claude Code via subscription
+
+[Claude Code](https://claude.ai/code) is the CLI that exposes Claude models (Sonnet, Opus) under
+a flat subscription, **with no per-token billing**. This makes it practical to:
+
+1. **Oracle generation** — run `test_writer/generator.py` against all ~840 candidates without
+   worrying about per-call cost. Use `claude-sonnet-4-6` as the default; fall back to Opus for
+   retries.
+2. **Solver baseline** — `solver/claude_sonnet.py` invokes Claude Sonnet via the Anthropic SDK
+   (or the `claude` CLI subprocess) with the same file-context prompt already used by
+   `gpt5_mini.py`. Expected to outperform `gpt-5-mini` significantly given Sonnet's stronger
+   coding ability.
+3. **Interactive debugging** — the benchmark maintainers can open Claude Code in the repo and
+   directly investigate failing instances without accumulating API spend.
+
+### Implementation plan
+
+| Component | Model | Mechanism |
+|---|---|---|
+| `test_writer/generator.py` | `claude-sonnet-4-6` | Anthropic SDK (`anthropic` package) |
+| `test_writer/validator.py` (retry) | `claude-opus-4-6` | Anthropic SDK |
+| `solver/claude_sonnet.py` | `claude-sonnet-4-6` | Anthropic SDK |
+| `solver/gpt5_mini.py` | `gpt-5-mini` | OpenAI SDK (kept for comparison) |
+
+The Anthropic SDK respects `ANTHROPIC_API_KEY` (or the subscription token when using Claude Code
+Pro). The solver and oracle generator should check for `ANTHROPIC_API_KEY` in `.env` and fall back
+to a warning if absent, rather than silently calling OpenAI.
+
+---
+
+## 11. Open Questions
 
 - **Root project size:** `root-project/root` has thousands of issues and a very long build time.
   May need to cap instances or use a pre-built ROOT Docker image to keep validation tractable.
 - **Test isolation in C++:** Catch2/GoogleTest tests are typically in a single binary; generated
   tests need to be added to the right `CMakeLists.txt`. The generator must also output the CMake
   diff, not just the `.cpp` diff.
-- **LLM cost:** Generating tests for ~840 candidates with ~10k tokens of context each. At Opus
-  pricing (~$15/M input tokens) that's ~$125 in input tokens alone; output and retries add more.
-  Strategy: use Sonnet for first-pass generation, Opus only for retry attempts. Estimated total
-  ~$200–400 for the full Phase 1 generation pass.
 - **Flaky tests:** Some generated tests may be non-deterministic. The validator should run each
   test 3 times before accepting it.

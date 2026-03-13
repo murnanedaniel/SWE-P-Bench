@@ -9,7 +9,7 @@ full-loop demo runs (`run_demo.py` on `scikit-hep/awkward`).
   setting `SETUPTOOLS_USE_DISTUTILS=stdlib` in the subprocess environment inside
   `evaluator.python_harness._install_repo()`.  A `--no-build-isolation` fallback
   chain was also added.
-- **Legacy `setuputils` dependency** (OPEN, severity: medium): `scikit-hep/particle`
+- **Legacy `setuputils` dependency** ⚠️ OPEN (severity: medium): `scikit-hep/particle`
   commit `5fc84a3b` (issue #9) uses `from setuputils import read` in `setup.py`.
   The `setuputils` package is not available on modern PyPI and cannot be installed.
   Instances at base commits that use this package will always fail install.
@@ -18,7 +18,7 @@ full-loop demo runs (`run_demo.py` on `scikit-hep/awkward`).
   `instance_id` (e.g. `scikit-hep__particle-24`) using only `rsplit("-",1)[0]`,
   giving `scikit-hep__particle` instead of `scikit-hep/particle`. Fixed by
   replacing the first `__` with `/` after stripping the issue number.
-- **Solver patch apply failures dominate** (OPEN): primary failure mode for
+- **Solver patch apply failures dominate** ⚠️ OPEN: primary failure mode for
   `gpt5_mini` is `patch apply failed` — model generates syntactically valid diffs
   but with wrong target file paths or mismatched context lines. This accounts for
   ≥3 of the 8 valid-oracle failures in both 1-shot and 3-shot runs. See issue #23.
@@ -48,7 +48,7 @@ full-loop demo runs (`run_demo.py` on `scikit-hep/awkward`).
 
 ## Critical Blockers
 
-### 1. Scraping requires GITHUB_TOKEN (unauthenticated rate limit = 60 req/hr)
+### ~~1. Scraping requires GITHUB_TOKEN (unauthenticated rate limit = 60 req/hr)~~ ✅ RESOLVED
 
 **Symptom:** On the first run in a clean environment without `GITHUB_TOKEN`,
 the scraper immediately hits GitHub's unauthenticated rate limit (60 req/hr
@@ -69,7 +69,7 @@ if the token is absent.
 
 ---
 
-### 2. No mechanism to fetch only N instances (scraper always scans all issues)
+### ~~2. No mechanism to fetch only N instances (scraper always scans all issues)~~ ✅ RESOLVED
 
 **Symptom:** `scraper/acts.py:scrape()` always fetches ALL closed issues
 before returning any. For `scikit-hep/awkward` (~1,500 issues) this means
@@ -87,7 +87,7 @@ uses a custom `scrape_first_instance()` workaround instead.
 
 ## Design Gaps (P0 Items from DESIGN.md Not Yet Implemented)
 
-### 3. No `test_writer/` package existed before this PR
+### ~~3. No `test_writer/` package existed before this PR~~ ✅ RESOLVED
 
 DESIGN.md lists `test_writer/generator.py` and `test_writer/validator.py` as
 P0 requirements, but neither existed. Added by this PR:
@@ -100,7 +100,7 @@ generated oracle tests are accepted without verification.
 
 ---
 
-### 4. No `repos.yml` configuration registry
+### ~~4. No `repos.yml` configuration registry~~ ✅ RESOLVED
 
 DESIGN.md §1 describes a per-repo config registry for build commands, test
 frameworks, and file patterns. This file did not exist. Added by this PR.
@@ -113,7 +113,7 @@ accept a `repos.yml` config path and look up per-repo settings from it.
 
 ---
 
-### 5. No `data/` directory structure
+### ~~5. No `data/` directory structure~~ ✅ RESOLVED
 
 DESIGN.md describes `data/{repo}/candidates.jsonl` and a two-stage filtered
 pipeline. No `data/` directory existed. Scripts that output to
@@ -127,7 +127,7 @@ calls `out.parent.mkdir(parents=True, exist_ok=True)` so that part is fine.
 
 ## Code Quality Issues
 
-### 6. `solver/gpt5_mini.py` module name vs. filename mismatch
+### ~~6. `solver/gpt5_mini.py` module name vs. filename mismatch~~ ✅ RESOLVED
 
 - **File:** `solver/gpt5_mini.py`
 - **CLI docs in file:** `python -m solver.gpt4o_mini …`
@@ -139,7 +139,7 @@ updating the docstring. Minor, but confusing.
 
 ---
 
-### 7. `solver/gpt5_mini.py` is ACTS/C++ specific — no Python repo variant
+### ~~7. `solver/gpt5_mini.py` is ACTS/C++ specific — no Python repo variant~~ ✅ RESOLVED
 
 The system prompt says "expert C++ software engineer working on the ACTS
 project" and requests C++17/20 patches. There is no Python-repo solver.
@@ -149,7 +149,7 @@ project" and requests C++17/20 patches. There is no Python-repo solver.
 
 ---
 
-### 8. `evaluator/harness.py` is ACTS/Docker only
+### ~~8. `evaluator/harness.py` is ACTS/Docker only~~ ✅ RESOLVED
 
 The Docker evaluator is hardcoded to `ghcr.io/acts-project/ubuntu2404:latest`
 and contains an inline CMake build script. There is no Python equivalent.
@@ -159,7 +159,7 @@ refactor should extract a common `BaseEvaluator` interface.
 
 ---
 
-### 9. `_split_diff()` uses module-level hardcoded regex patterns
+### ~~9. `_split_diff()` uses module-level hardcoded regex patterns~~ ✅ RESOLVED
 
 `scraper/acts.py:_split_diff()` uses module-level `_SRC_FILE_RE` and
 `_TEST_FILE_RE` regex constants instead of accepting them as parameters.
@@ -172,7 +172,7 @@ with the current values as defaults, then read from `repos.yml`.
 
 ---
 
-### 10. `evaluate_patch_mode()` clones directly from github.com
+### 10. `evaluate_patch_mode()` clones directly from github.com ⚠️ OPEN (ACTS/Docker path, not blocking)
 
 `evaluator/harness.py:evaluate_patch_mode()` clones repos via
 `https://github.com/` with no mirror or proxy option. This fails in
@@ -182,7 +182,7 @@ network-restricted environments or when GitHub is rate-limiting git clones.
 
 ---
 
-### 11. `DOCKER_EVAL_SCRIPT` runs ALL unit tests, not just affected ones
+### 11. `DOCKER_EVAL_SCRIPT` runs ALL unit tests, not just affected ones ⚠️ OPEN (ACTS/Docker path, not blocking)
 
 The inline bash script in `evaluator/harness.py` runs `ctest -R '.*'` which
 executes every ACTS unit test. For large repos this takes 30+ minutes. The
@@ -192,13 +192,13 @@ benchmark only needs to run the tests in `FAIL_TO_PASS` + `PASS_TO_PASS`.
 
 ---
 
-### 12. `requirements.txt` missing `pyyaml`
+### ~~12. `requirements.txt` missing `pyyaml`~~ ✅ RESOLVED
 
 Added `pyyaml>=6.0` to `requirements.txt` in this PR (needed for `repos.yml`
 loading). The original file only had `requests`, `python-dotenv`, `openai`,
 `tqdm`.
 
-### 18. gpt-5-mini solver outputs non-standard "*** Begin Patch" diff format
+### ~~18. gpt-5-mini solver outputs non-standard "*** Begin Patch" diff format~~ ✅ RESOLVED
 
 **Symptom:** The predicted patch from `run_demo.py` step 3 starts with
 `*** Begin Patch` and uses `*** Update File:` headers instead of the
@@ -224,7 +224,7 @@ Options:
 
 ## Runtime Observations
 
-### 13. `evaluator/python_harness.py` uses `sys.executable` which may lack pytest
+### ~~13. `evaluator/python_harness.py` uses `sys.executable` which may lack pytest~~ ✅ RESOLVED
 
 **Symptom:** `pytest BEFORE patch` runs but captures empty output `{}`. The
 actual reason is `/usr/bin/python3: No module named pytest`.
@@ -244,7 +244,7 @@ The fix used in this session: `pip install pytest` into the active Python.
 
 ---
 
-### 14. Oracle test generator (GPT-5-mini) gets `ak.to_buffers` return order wrong
+### 14. Oracle test generator (GPT-5-mini) gets `ak.to_buffers` return order wrong ⚠️ OPEN (needs validator retry loop)
 
 **Symptom:** Generated tests use `form, buffers, length = ak.to_buffers(...)`
 but actual API returns `form, length, container = ak.to_buffers(...)`.
@@ -262,7 +262,7 @@ prompt would help.
 
 ---
 
-### 19. F-string syntax issue in run_demo.py (curly quote in f-string)
+### ~~19. F-string syntax issue in run_demo.py (curly quote in f-string)~~ ✅ RESOLVED
 
 The initial version of `run_demo.py` used a Unicode curly quote (`"`) inside
 an f-string, causing a `SyntaxError`. Python f-strings require the same quote
@@ -270,7 +270,7 @@ character to be escaped or avoided. Fixed in this PR.
 
 ---
 
-### 14. Oracle test quality depends heavily on patch visibility
+### 20. Oracle test quality depends heavily on patch visibility ⚠️ OPEN (design trade-off)
 
 The oracle test generator (GPT-5-mini) is given the gold patch. If the patch
 is large or touches many files, the model may generate tests that are too
@@ -280,7 +280,7 @@ but no guardrails are implemented yet.
 
 ---
 
-### 15. `max_tokens` not supported by gpt-5-mini; must use `max_completion_tokens`
+### ~~15. `max_tokens` not supported by gpt-5-mini; must use `max_completion_tokens`~~ ✅ RESOLVED
 
 **Symptom:** `openai.BadRequestError: 400 — 'max_tokens' is not supported with
 this model. Use 'max_completion_tokens' instead.`
@@ -296,7 +296,7 @@ deprecated `max_tokens` parameter, causing every API call to fail immediately.
 - `test_writer/generator.py:123`
 - `solver/gpt5_mini.py:87`
 
-### 16. gpt-5-mini is a **reasoning model** — `max_completion_tokens` must be large (≥5000)
+### ~~16. gpt-5-mini is a **reasoning model** — `max_completion_tokens` must be large (≥5000)~~ ✅ RESOLVED
 
 **Symptom:** With small `max_completion_tokens` (e.g. 2048 or 4096), the model
 returns an empty `content` field. Inspecting the response shows
@@ -316,7 +316,7 @@ budget still needs to be large enough for reasoning to complete.
 
 **Location:** `test_writer/generator.py`, `solver/gpt5_mini.py`, `run_demo.py`
 
-### 17. `temperature` not supported by gpt-5-mini — only default value (1) allowed
+### ~~17. `temperature` not supported by gpt-5-mini — only default value (1) allowed~~ ✅ RESOLVED
 
 **Symptom:** `openai.BadRequestError: 400 — 'temperature' does not support
 0.2 with this model. Only the default (1) value is supported.`
@@ -336,7 +336,7 @@ determinism is controlled internally — the `temperature` parameter is not expo
 
 ---
 
-### 22. Solver outputs bare `@@` hunk separators without line numbers (compact format)
+### ~~22. Solver outputs bare `@@` hunk separators without line numbers (compact format)~~ ✅ RESOLVED
 
 **Symptom:** The solver outputs a unified diff where hunk separators appear as
 ` @@` (a space-prefixed `@@` line, treated as a context line) rather than a
@@ -356,7 +356,7 @@ line numbers are slightly off.
 
 ---
 
-### 23. Zero-context solver guesses wrong file paths
+### ~~23. Zero-context solver guesses wrong file paths~~ ✅ RESOLVED
 
 **Symptom:** The solver generates a syntactically valid patch but uses
 invented file paths (e.g. `awkward/_v2/from_buffers.py`) rather than the
@@ -391,26 +391,26 @@ fallback in case path names still diverge slightly despite context being availab
 
 | # | Issue | Severity | Status |
 |---|-------|----------|--------|
-| 1 | No GITHUB_TOKEN = rate limit hang | Critical | **Fixed** — abort with reset timestamp instead of sleeping |
-| 2 | Scraper fetches all issues before returning first | High | **Fixed** — `scrape(max_instances=N)` param; workaround in run_demo.py removed |
-| 3 | test_writer/ package missing | High | Fixed |
-| 4 | repos.yml missing | High | Fixed |
-| 5 | data/ directory not created | Medium | Fixed in run_demo.py |
-| 6 | solver filename/docstring mismatch | Low | **Fixed** — docstring + CLI updated to gpt5_mini |
-| 7 | Solver is C++ / ACTS specific | High | **Fixed** — language-aware system prompts via repos.yml |
-| 8 | Evaluator is Docker / ACTS specific | High | Fixed (python_harness.py) |
-| 9 | _split_diff() non-configurable regexes | Medium | **Fixed** — `src_pat`/`test_pat` params, loaded from repos.yml |
-| 10 | evaluate_patch_mode() hardcoded GitHub URL | Medium | Open (ACTS/Docker path, not used in demo) |
-| 11 | DOCKER_EVAL_SCRIPT runs all tests | Medium | Open (ACTS/Docker path, not used in demo) |
-| 12 | requirements.txt missing pyyaml | Low | Fixed |
-| 13 | sys.executable lacks pytest (python_harness) | High | **Fixed** — `_find_pytest_cmd()` with PATH fallback |
-| 14 | Oracle test API hallucination (to_buffers order) | High | Open (needs test_writer/validator.py) |
-| 15 | max_tokens not supported by gpt-5-mini | High | Fixed |
-| 16 | gpt-5-mini reasoning model needs ≥5000 tokens | High | Fixed |
-| 17 | temperature not supported by gpt-5-mini | High | **Fixed** — `temperature` param and `--temperature` CLI arg removed |
-| 18 | gpt-5-mini solver outputs "*** Begin Patch" format | High | **Fixed** — `_normalize_patch()` in solver/gpt5_mini.py |
-| 19 | F-string curly quote syntax error | Low | Fixed |
-| 20 | Oracle test brittleness (design) | Medium | Open (design) |
-| 21 | test_writer/validator.py not implemented | High | **Fixed** — implemented with clone-once retry loop |
-| 22 | Solver outputs bare `@@` hunk separators | High | **Fixed** — `_normalize_bare_hunk_headers()` + `--recount` |
-| 23 | Zero-context solver guesses wrong file paths | High | **Fixed** — file-context baseline: `fetch_source_context()` fetches real source files at `base_commit` and includes them in the solver prompt |
+| 1 | No GITHUB_TOKEN = rate limit hang | Critical | ✅ abort with reset timestamp |
+| 2 | Scraper fetches all issues before returning first | High | ✅ `scrape(max_instances=N)` param |
+| 3 | test_writer/ package missing | High | ✅ implemented |
+| 4 | repos.yml missing | High | ✅ implemented |
+| 5 | data/ directory not created | Medium | ✅ mkdir -p in scripts |
+| 6 | solver filename/docstring mismatch | Low | ✅ docstring + CLI updated |
+| 7 | Solver is C++ / ACTS specific | High | ✅ language-aware prompts via repos.yml |
+| 8 | Evaluator is Docker / ACTS specific | High | ✅ python_harness.py added |
+| 9 | _split_diff() non-configurable regexes | Medium | ✅ `src_pat`/`test_pat` params |
+| 10 | evaluate_patch_mode() hardcoded GitHub URL | Medium | ⚠️ OPEN (ACTS/Docker path only) |
+| 11 | DOCKER_EVAL_SCRIPT runs all tests | Medium | ⚠️ OPEN (ACTS/Docker path only) |
+| 12 | requirements.txt missing pyyaml | Low | ✅ added |
+| 13 | sys.executable lacks pytest | High | ✅ `_find_pytest_cmd()` with PATH fallback |
+| 14 | Oracle test API hallucination | High | ⚠️ OPEN (needs validator retry loop) |
+| 15 | max_tokens not supported by gpt-5-mini | High | ✅ use `max_completion_tokens` |
+| 16 | gpt-5-mini reasoning model needs ≥5000 tokens | High | ✅ budget set to 8000 |
+| 17 | temperature not supported by gpt-5-mini | High | ✅ `temperature` param removed |
+| 18 | gpt-5-mini outputs "*** Begin Patch" format | High | ✅ `_normalize_patch()` added |
+| 19 | F-string curly quote syntax error | Low | ✅ fixed |
+| 20 | Oracle test brittleness (design) | Medium | ⚠️ OPEN (design trade-off) |
+| 21 | test_writer/validator.py not implemented | High | ✅ clone-once retry loop |
+| 22 | Solver outputs bare `@@` hunk separators | High | ✅ `_normalize_bare_hunk_headers()` + `--recount` |
+| 23 | Zero-context solver guesses wrong file paths | High | ✅ `fetch_source_context()` at base_commit |
