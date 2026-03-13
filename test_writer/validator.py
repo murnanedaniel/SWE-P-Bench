@@ -216,9 +216,15 @@ def _validate_in_dir(
     result["before_output"] = before_out
     print(f"      {before}", file=sys.stderr)
 
-    # --- Apply gold patch (normalise format first) ---
-    from solver.gpt5_mini import _normalize_patch
-    gold_patch = _normalize_patch(instance["patch"])
+    # --- Apply gold patch ---
+    # NOTE: Do NOT run _normalize_patch on gold patches. That function is
+    # designed for LLM-generated output with non-standard formats (bare @@,
+    # *** Begin Patch, trailing whitespace).  Gold patches from GitHub's API
+    # are already valid unified diffs; normalising them can corrupt blank
+    # context lines and hunk counts, causing git-apply to reject them.
+    gold_patch = instance["patch"]
+    if not gold_patch.endswith("\n"):
+        gold_patch += "\n"
     ok, err = _apply_patch(gold_patch, repo_dir)
     if not ok:
         result["error"] = f"gold patch apply failed: {err}"
