@@ -1,0 +1,9 @@
+{
+  "is_valid": false,
+  "error": "pip install failed: Command '['cmake', '/tmp/swepbench_val_oax0lozz/repo', '-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/tmp/swepbench_val_oax0lozz/repo/src/iminuit/', '-DPYTHON_EXECUTABLE=/usr/bin/python', '-DCMAKE_BUILD_TYPE=Release']' returned non-zero exit status 1.\n      [end of output]\n  \n  note: This error originates from a subprocess, and is likely not a problem with pip.\n  ERROR: Failed building editable for iminuit\nERROR: Could not build wheels for iminuit, which is required to install pyproject.toml-based projects\n",
+  "oracle_tests": [],
+  "FAIL_TO_PASS": [],
+  "PASS_TO_PASS": [],
+  "before_results": {},
+  "after_results": {}
+}

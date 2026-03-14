@@ -1,0 +1,1 @@
+"Two enhancements come immediately to my mind:\r\n```\r\nDecFileParser.from_string(<file given as string>)\r\nDecFileParser.from_files('DECAY.DEC', 'my_decay.dec')\r\n```"
