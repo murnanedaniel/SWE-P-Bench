@@ -394,7 +394,7 @@ def generate_and_validate(
                 "before_results": {}, "after_results": {},
             }
 
-        feedback: str | None = None
+        feedback_parts: list[str] = []
         last_result: dict = {}
         oracle_code = ""
 
@@ -403,6 +403,7 @@ def generate_and_validate(
                 f"[validator] Attempt {attempt}/{max_attempts} — generating tests …",
                 file=sys.stderr,
             )
+            feedback = "\n\n".join(feedback_parts) if feedback_parts else None
             oracle_code, _names = generate_oracle_tests(
                 instance, n=n, model=model, feedback=feedback
             )
@@ -427,7 +428,7 @@ def generate_and_validate(
                 f"before={result['before_results']}, after={result['after_results']}",
                 file=sys.stderr,
             )
-            feedback = _build_retry_feedback(result, attempt)
+            feedback_parts.append(_build_retry_feedback(result, attempt))
 
         print(
             f"[validator] All {max_attempts} attempts failed. "

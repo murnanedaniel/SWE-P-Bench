@@ -6,14 +6,19 @@ test functions that serve as validation oracles:
   - FAIL on the base commit (before the fix)
   - PASS after the gold patch is applied
 
-Uses GPT-5-mini to synthesise the tests from the issue description and diff.
+Supports two backends:
+  - OpenAI API (models: gpt-5.4, gpt-5-mini, etc.) — requires OPENAI_API_KEY
+  - Claude CLI (models: sonnet, opus, haiku) — uses Claude Code subscription,
+    no API key needed.  Prefix model name with ``claude:`` to select this
+    backend (e.g. ``--model claude:sonnet``).
 
 Usage:
     from test_writer.generator import generate_oracle_tests
     test_code, test_names = generate_oracle_tests(instance, n=3)
+    test_code, test_names = generate_oracle_tests(instance, n=3, model="claude:sonnet")
 
 Environment:
-    OPENAI_API_KEY  OpenAI API key
+    OPENAI_API_KEY  OpenAI API key (only needed for OpenAI backend)
 """
 
 from __future__ import annotations
@@ -23,7 +28,6 @@ import re
 import sys
 
 from dotenv import load_dotenv
-from openai import OpenAI
 
 load_dotenv()
 
@@ -102,6 +106,43 @@ def _extract_test_names(code: str) -> list[str]:
     return re.findall(r"^def (test_\w+)", code, re.MULTILINE)
 
 
+def _is_claude_model(model: str) -> bool:
+    """Check if model string requests the Claude CLI backend."""
+    return model.startswith("claude:")
+
+
+def _call_openai(model: str, system: str, user: str) -> str:
+    """Call an OpenAI model via the SDK."""
+    from openai import OpenAI
+
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+    _is_reasoning = model.endswith("-mini") or model.startswith("o")
+    api_kwargs: dict = {"max_completion_tokens": 8000}
+    if not _is_reasoning:
+        api_kwargs["temperature"] = 0.2
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        **api_kwargs,
+    )
+    return response.choices[0].message.content or ""
+
+
+def _call_claude(model_alias: str, system: str, user: str) -> str:
+    """Call Claude via the CLI (subscription, no API key)."""
+    from llm.claude_cli import claude_chat
+
+    return claude_chat(
+        system_prompt=system,
+        user_prompt=user,
+        model=model_alias,
+    )
+
+
 def generate_oracle_tests(
     instance: dict,
     n: int = 3,
@@ -116,7 +157,8 @@ def generate_oracle_tests(
                   repo, problem_statement, patch.
                   Optional: hints_text.
         n:        Number of test functions to generate.
-        model:    OpenAI model name.
+        model:    Model name.  Use ``"claude:sonnet"`` or ``"claude:opus"``
+                  for the Claude CLI backend; otherwise uses OpenAI SDK.
         feedback: Optional error feedback from a previous failed validation
                   attempt. When provided it is appended to the user prompt so
                   the model can correct its mistakes.
@@ -125,30 +167,18 @@ def generate_oracle_tests(
         (test_code, test_names) — test_code is a valid Python module string;
         test_names is the list of function names found in it.
     """
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
-
     prompt = _build_generation_prompt(instance, n)
     if feedback:
         prompt = prompt + "\n\n" + feedback
 
     print(f"  Calling {model} to generate {n} oracle tests…", file=sys.stderr)
-    # Reasoning models (gpt-5-mini, o*) do not accept temperature.
-    # Frontier models (gpt-5.4, gpt-4o, etc.) benefit from a low temperature.
-    _is_reasoning = model.endswith("-mini") or model.startswith("o")
-    api_kwargs: dict = {"max_completion_tokens": 8000}
-    if not _is_reasoning:
-        api_kwargs["temperature"] = 0.2
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ],
-        **api_kwargs,
-    )
+    if _is_claude_model(model):
+        claude_alias = model.split(":", 1)[1]  # e.g. "sonnet"
+        raw = _call_claude(claude_alias, SYSTEM_PROMPT, prompt)
+    else:
+        raw = _call_openai(model, SYSTEM_PROMPT, prompt)
 
-    raw = response.choices[0].message.content or ""
     code = _clean_code_block(raw)
     test_names = _extract_test_names(code)
 

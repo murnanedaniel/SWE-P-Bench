@@ -300,11 +300,10 @@ def _install_repo(
     else:
         extras_list = [".[dev,test]", ".[dev]", ".[test]", "."]
 
-    # Some old repos (pre-pyproject.toml) fail with pip >= 22 unless
-    # SETUPTOOLS_USE_DISTUTILS=stdlib is set.  Pass it in the subprocess env.
+    # Use setuptools' bundled distutils (Python 3.12 removed stdlib distutils).
     import os as _os
     install_env = dict(_os.environ)
-    install_env["SETUPTOOLS_USE_DISTUTILS"] = "stdlib"
+    install_env["SETUPTOOLS_USE_DISTUTILS"] = "local"
 
     # Build all (extras, flag) combinations to try:
     # 1. normal install with env fix

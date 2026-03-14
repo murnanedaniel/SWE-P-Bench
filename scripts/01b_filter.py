@@ -15,7 +15,7 @@ Filter A — Data-entry (free, heuristic):
     Signal: (fraction of changed files that are data files > 0.4) AND
             (added lines / total changed lines > 0.85)
 
-Filter B — LLM relevance score (one gpt-5.4 call per instance):
+Filter B — LLM relevance score (one call per instance):
     Discards instances where the merged PR addresses something substantially
     different from what the issue describes (e.g. issue says "add tests" but
     PR fixes an unrelated bug; issue says "add docs" but PR also renames a
@@ -23,11 +23,15 @@ Filter B — LLM relevance score (one gpt-5.4 call per instance):
 
     Score 0–10; instances scoring < ``--min-score`` (default 6) are discarded.
 
+    Supports two backends:
+      - OpenAI API (models: gpt-5.4, etc.) — requires OPENAI_API_KEY
+      - Claude CLI (models: claude:sonnet, claude:opus) — uses subscription
+
 Usage:
     python scripts/01b_filter.py \\
         --dataset data/scikit-hep/particle/candidates.jsonl \\
         [--out data/scikit-hep/particle/candidates_filtered.jsonl] \\
-        [--min-score 6]
+        [--min-score 6] [--model claude:sonnet]
 
 The output JSONL has the same fields as the input plus three extra fields
 per record:
@@ -39,7 +43,7 @@ Idempotent: if the output file already exists, only instances not yet scored
 (by instance_id) are processed and the results are merged back.
 
 Environment:
-    OPENAI_API_KEY  Required for Filter B
+    OPENAI_API_KEY  Required for Filter B (OpenAI backend only)
 """
 
 from __future__ import annotations
@@ -52,10 +56,12 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from openai import OpenAI
 from tqdm import tqdm
 
 load_dotenv()
+
+# Ensure project root is on sys.path so ``llm`` package is importable.
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # ---------------------------------------------------------------------------
 # Filter A — data-entry heuristic
@@ -85,7 +91,7 @@ def _data_entry_score(patch: str) -> bool:
 # Filter B — LLM relevance score
 # ---------------------------------------------------------------------------
 
-_RELEVANCE_MODEL = "gpt-5.4"
+_DEFAULT_MODEL = "claude:sonnet"
 
 _RELEVANCE_SYSTEM = (
     "You are a benchmark quality assessor. "
@@ -129,23 +135,36 @@ def _make_diff_summary(patch: str) -> str:
     return "\n".join(lines) if lines else "(no files changed)"
 
 
-def _score_relevance(client: OpenAI, instance: dict) -> int:
-    """Call gpt-5.4 and return a 0–10 relevance integer (−1 on failure)."""
+def _score_relevance(instance: dict, model: str) -> int:
+    """Call the LLM and return a 0–10 relevance integer (−1 on failure)."""
     issue = instance.get("problem_statement", "").strip()[:3000]  # cap for cost
     diff_summary = _make_diff_summary(instance.get("patch", ""))
 
     prompt = _RELEVANCE_TEMPLATE.format(issue=issue, diff_summary=diff_summary)
     try:
-        response = client.chat.completions.create(
-            model=_RELEVANCE_MODEL,
-            messages=[
-                {"role": "system", "content": _RELEVANCE_SYSTEM},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.0,
-            max_completion_tokens=10,
-        )
-        raw = (response.choices[0].message.content or "").strip()
+        if model.startswith("claude:"):
+            from llm.claude_cli import claude_chat
+
+            raw = claude_chat(
+                system_prompt=_RELEVANCE_SYSTEM,
+                user_prompt=prompt,
+                model=model.split(":", 1)[1],
+            )
+        else:
+            from openai import OpenAI
+
+            client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": _RELEVANCE_SYSTEM},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.0,
+                max_completion_tokens=10,
+            )
+            raw = (response.choices[0].message.content or "").strip()
+
         m = re.search(r"\d+", raw)
         return int(m.group()) if m else -1
     except Exception as exc:
@@ -162,9 +181,14 @@ def run_filter(
     dataset_path: str,
     out_path: str,
     min_score: int = 6,
+    model: str = _DEFAULT_MODEL,
 ) -> None:
-    api_key = os.environ.get("OPENAI_API_KEY", "")
-    client = OpenAI(api_key=api_key) if api_key else None
+    use_claude = model.startswith("claude:")
+    if not use_claude and not os.environ.get("OPENAI_API_KEY"):
+        raise RuntimeError(
+            f"Model '{model}' requires OPENAI_API_KEY. "
+            "Set the env var or use --model claude:sonnet"
+        )
 
     # Load all instances
     instances: list[dict] = []
@@ -174,16 +198,22 @@ def run_filter(
             if line:
                 instances.append(json.loads(line))
 
-    # Load already-scored instances from output (for idempotency)
+    # Load already-scored instances for idempotency.
+    # Check candidates_scored.jsonl first (has ALL results including failures),
+    # then fall back to the filtered output file.
     scored: dict[str, dict] = {}
     out = Path(out_path)
-    if out.exists():
-        with open(out) as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    rec = json.loads(line)
-                    scored[rec["instance_id"]] = rec
+    scored_path = out.parent / "candidates_scored.jsonl"
+    for cache_file in [scored_path, out]:
+        if cache_file.exists():
+            with open(cache_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        rec = json.loads(line)
+                        iid = rec.get("instance_id")
+                        if iid and iid not in scored:
+                            scored[iid] = rec
 
     to_process = [i for i in instances if i["instance_id"] not in scored]
     print(
@@ -191,7 +221,11 @@ def run_filter(
         f"{len(scored)} already filtered, {len(to_process)} to process"
     )
 
-    new_results: list[dict] = []
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out_scored = out.parent / "candidates_scored.jsonl"
+
+    # Append each result to candidates_scored.jsonl as we go, so progress
+    # survives interruptions.
     for inst in tqdm(to_process, unit="instance"):
         iid = inst["instance_id"]
         patch = inst.get("patch", "")
@@ -199,17 +233,11 @@ def run_filter(
         # Filter A
         is_data = _data_entry_score(patch)
 
-        # Filter B (only call LLM if not already discarded by A and API key available)
+        # Filter B (only call LLM if not already discarded by A)
         if is_data:
             score = -1  # skip LLM for clear data-entry cases
-        elif client is None:
-            print(
-                "  [warning] OPENAI_API_KEY not set — skipping relevance filter",
-                file=sys.stderr,
-            )
-            score = 10  # assume pass when no API key
         else:
-            score = _score_relevance(client, inst)
+            score = _score_relevance(inst, model)
 
         passes = (not is_data) and (score == -1 or score >= min_score)
 
@@ -217,21 +245,21 @@ def run_filter(
         rec["filter_data_entry"] = is_data
         rec["filter_relevance_score"] = score
         rec["filter_pass"] = passes
-        new_results.append(rec)
+        scored[iid] = rec
+
+        # Append immediately so we don't lose progress on interruption
+        with open(out_scored, "a") as f:
+            f.write(json.dumps(rec) + "\n")
 
         status = "PASS" if passes else f"FAIL(data={is_data},score={score})"
         print(f"  {iid}: {status}", file=sys.stderr)
 
-    # Merge and write
-    all_results = list(scored.values()) + new_results
-    # Preserve input order
+    # Final write: deduplicated scored file + filtered-only file
+    all_results = list(scored.values())
     order = {inst["instance_id"]: i for i, inst in enumerate(instances)}
     all_results.sort(key=lambda r: order.get(r["instance_id"], 9999))
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-
-    # Write all scored instances (for inspection / debugging)
-    out_scored = Path(out_path).parent / "candidates_scored.jsonl"
+    # Rewrite scored file (deduped and ordered)
     with open(out_scored, "w") as f:
         for rec in all_results:
             f.write(json.dumps(rec) + "\n")
@@ -257,10 +285,12 @@ def main() -> None:
                         help="Output path (default: candidates_filtered.jsonl alongside input)")
     parser.add_argument("--min-score", type=int, default=6,
                         help="Minimum relevance score to keep (0–10, default 6)")
+    parser.add_argument("--model", default=_DEFAULT_MODEL,
+                        help="LLM model for relevance scoring (default: claude:sonnet)")
     args = parser.parse_args()
 
     out = args.out or str(Path(args.dataset).parent / "candidates_filtered.jsonl")
-    run_filter(args.dataset, out, min_score=args.min_score)
+    run_filter(args.dataset, out, min_score=args.min_score, model=args.model)
 
 
 if __name__ == "__main__":
