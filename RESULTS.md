@@ -5,7 +5,91 @@ the instructions in [CONTRIBUTING](#contributing).
 
 ---
 
+## Benchmark v1 — `scikit-hep/{pyhf,uproot5,awkward}` (50 instances)
+
+**Date:** 2026-03-18 / 2026-03-19
+**Dataset:** `data/benchmark_v1.jsonl` (50 instances — pyhf 33, uproot5 9, awkward 8; seed 42)
+**Evaluator:** post-fix (see [Evaluator corrections](#evaluator-corrections-2026-03-18) below)
+
+### Overall Results
+
+| Solver                | Repo                     | Instances | Resolved | Rate      |
+|-----------------------|--------------------------|----------:|---------:|----------:|
+| `gold`                | scikit-hep/pyhf          |        33 |       26 | 78.8%     |
+| `gold`                | scikit-hep/uproot5       |         9 |        2 | 22.2%     |
+| `gold`                | scikit-hep/awkward       |         8 |        3 | 37.5%     |
+| **`gold` TOTAL**      |                          |    **50** |   **31** | **62.0%** |
+| `claude_sonnet_1shot` | scikit-hep/pyhf          |        33 |       18 | 54.5%     |
+| `claude_sonnet_1shot` | scikit-hep/uproot5       |         9 |        1 | 11.1%     |
+| `claude_sonnet_1shot` | scikit-hep/awkward       |         8 |        2 | 25.0%     |
+| **`claude_sonnet_1shot` TOTAL** |                |    **50** |   **21** | **42.0%** |
+
+> ⚠️ **This gold run is degraded — do not cite 62.0% as the gold ceiling.**
+> 7 of the 19 gold failures are a single environment bug, not a benchmark-content
+> failure: `pip install failed: ModuleNotFoundError: No module named 'hatchling'`
+> (the build backend is missing from the eval venv). A further 2 instances
+> (`awkward-1377`, `awkward-2384`) have no eval record at all.
+> Excluding both classes, gold resolves **31/41 = 75.6%**.
+> uproot5 and awkward are worst hit (4/9 and 2/8 install failures respectively),
+> which is why their rates look implausibly low.
+
+**Known inconsistencies (unresolved — these need attention before publishing):**
+
+1. **`benchmark_v1.jsonl` violates its own construction invariant.**
+   `07_assemble_benchmark.py` selects only instances where gold resolves, but it
+   was run at 12:48 against the *pre-fix* gold evals. The post-fix gold rerun
+   (23:15–00:05) overwrote those eval files, and 19/50 selected instances no
+   longer pass. The benchmark must be re-assembled from the corrected evals.
+2. **4 instances where the solver beats gold.** `pyhf-1349`, `pyhf-1389`,
+   `pyhf-1491`, `pyhf-1662` are resolved by `claude_sonnet_1shot` but recorded
+   as F2P-failed for gold, with tests running both before and after. Since gold
+   is the reference fix, this points at oracle nondeterminism or eval flakiness
+   rather than genuine solver superiority.
+3. **Solver and gold ran against different evaluator code.** The
+   `claude_sonnet_1shot` evals predate the 22:45 harness fix; gold does not.
+   The two columns above are therefore not strictly comparable.
+
+**Next steps:** (1) install `hatchling` (and other PEP-517 backends) in the eval
+environment and re-run gold; (2) re-assemble `benchmark_v1` from corrected evals;
+(3) re-run `claude_sonnet_1shot` under the fixed harness; (4) investigate the
+4 gold-fails-solver-passes instances.
+
+---
+
+## Evaluator corrections (2026-03-18)
+
+Three pipeline bugs were fixed on 2026-03-18 (full write-ups in `CLAUDE.md`).
+The first invalidates every gold number recorded before that date:
+
+**Gold patches were being run through LLM-patch normalisation**, which corrupts
+valid GitHub diffs by mangling blank context lines and hunk counts, producing
+spurious "patch apply failed" results. Effect on the pyhf gold baseline:
+
+| Measurement                          | Gold resolve rate |
+|--------------------------------------|------------------:|
+| Pre-fix (2026-03-13, recorded below) |  9/42 = **21.4%** |
+| Post-fix (2026-03-19)                | 42/63 = **66.7%** |
+
+Post-fix gold over all evaluated instances (not benchmark-scoped):
+
+| Repo               | Resolved | Rate  | of which install failures |
+|--------------------|---------:|------:|--------------------------:|
+| scikit-hep/pyhf    |    42/63 | 66.7% |                         3 |
+| scikit-hep/uproot5 |     9/30 | 30.0% |                        13 |
+| scikit-hep/awkward |     8/15 | 53.3% |                         5 |
+
+The `hatchling` install failure inflates the failure count in all three rows,
+uproot5 most severely.
+
+---
+
 ## Production Run — `scikit-hep/{particle,pyhf,decaylanguage}` (filtered datasets)
+
+> ⚠️ **SUPERSEDED — pre-fix numbers, retained for history.** All gold figures in
+> this section were produced by the buggy evaluator described above and understate
+> gold. The pyhf row is corrected there (21.4% → 66.7%). **`particle` and
+> `decaylanguage` were never re-evaluated post-fix**, so their gold rates below
+> (63.8% / 16.7%) remain uncorrected and should not be cited.
 
 **Date:** 2026-03-13
 **Repos:** `scikit-hep/particle`, `scikit-hep/pyhf`, `scikit-hep/decaylanguage`
@@ -38,6 +122,10 @@ the instructions in [CONTRIBUTING](#contributing).
 ---
 
 ## Mini Run — `scikit-hep/particle` (10 instances)
+
+> ⚠️ **Pre-fix evaluator** (see [Evaluator corrections](#evaluator-corrections-2026-03-18)).
+> Gold reaches 8/8 on installable instances here, so this run was not visibly
+> affected — but it has not been re-verified post-fix.
 
 **Date:** 2026-03-12
 **Repo:** `scikit-hep/particle`
