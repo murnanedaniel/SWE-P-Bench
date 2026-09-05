@@ -3,6 +3,17 @@
 This document records bugs, gaps, and design problems discovered during
 full-loop demo runs (`run_demo.py` on `scikit-hep/awkward`).
 
+**Run 5 (2026-03-18/19, benchmark v1 assembly + gold/Claude evaluation):**
+- **Three evaluator bugs found and fixed** (issues #24, #25, #26 below): gold
+  patches were being run through LLM-patch normalisation, the evaluator ignored
+  `meta.json` `is_valid`, and the solver ignored the benchmark subset. Full
+  write-ups in `CLAUDE.md`. Net effect: pyhf gold went from 9/42 (21.4%) to
+  42/63 (66.7%) — **every gold number recorded before 2026-03-18 is invalid.**
+- **Three new open problems** (issues #27, #28, #29 below): missing PEP-517
+  build backends in the eval venv, `benchmark_v1.jsonl` violating its own
+  gold-resolvable invariant, and 4 instances the solver resolves but gold does not.
+- See `RESULTS.md` for the reconciled result tables and caveats.
+
 **Run 4 (2026-03-12, mini production run on scikit-hep/particle):**
 - **pip install failure on old commits** (FIXED): instances from pre-pyproject.toml
   era fail with `AttributeError: install_layout` under pip ≥ 22.3. Fixed by
@@ -387,6 +398,105 @@ fallback in case path names still diverge slightly despite context being availab
 
 ---
 
+## Benchmark v1 Run (2026-03-18/19)
+
+### ~~24. Gold patches corrupted by LLM-patch normalisation in evaluator~~ ✅ RESOLVED
+
+**Severity: Critical.** `evaluator/python_harness.py` ran `_normalize_patch()` and
+`_correct_hunk_positions()` on *all* patches, including gold patches taken verbatim
+from GitHub's API. Normalisation mangles blank context lines and hunk counts, so
+valid diffs failed to apply and were scored as unresolved. 31 of 47 valid oracles
+failed gold re-evaluation with "patch apply failed".
+
+`test_writer/validator.py` already had a comment warning against exactly this and
+correctly skipped normalisation for gold — the evaluator and validator had drifted.
+
+**Fix:** added an `is_gold` parameter to `evaluate_python_instance()`; when true,
+both normalisation steps are skipped and only a trailing newline is ensured.
+Threaded through from `04_evaluate.py --gold`.
+
+**Impact:** invalidates every gold figure recorded before 2026-03-18. pyhf gold
+went 9/42 (21.4%) → 42/63 (66.7%). `particle` and `decaylanguage` have still not
+been re-evaluated. See `RESULTS.md`.
+
+### ~~25. Evaluator evaluated instances with invalid oracles~~ ✅ RESOLVED
+
+**Severity: High.** `02_gen_oracles.py` writes a `.py` oracle file for every
+attempt, including failed ones (intentional, for debugging) — validity lives in
+`.meta.json` `is_valid`. `04_evaluate.py` only checked that the `.py` existed, so
+it evaluated 220 instances when only 108 had valid oracles: 112 pointless
+clone+install+test cycles, worst on awkward (94 attempted, 15 valid).
+
+**Fix:** `04_evaluate.py` now reads `.meta.json` and skips anything without
+`is_valid: true`. Missing or unparseable meta counts as invalid.
+
+### ~~26. Solver processed all instances instead of the benchmark subset~~ ✅ RESOLVED
+
+**Severity: Medium.** `03_solve.py` solved 161 awkward instances when only 8 were
+in the benchmark; `--only-valid-oracles` was opt-in rather than the default.
+Filtering in `03_solve.py` alone was also insufficient, because solver modules
+re-read `dataset_path` internally and never saw the filtered list.
+
+**Fix:** inverted the flag to `--include-invalid-oracles` (valid-only is now the
+default); added `--benchmark` to both `03_solve.py` and `04_evaluate.py`; and
+`03_solve.py` now writes the filtered instances to a temp JSONL that the solver
+module reads.
+
+### 27. Missing PEP-517 build backends in eval environment ⚠️ OPEN
+
+**Severity: High.** 7 of the 19 gold failures on benchmark v1 are a single
+environment fault, not a benchmark-content failure:
+
+```
+pip install failed: ModuleNotFoundError: No module named 'hatchling'
+```
+
+The build backend is absent from the eval venv, so any instance whose
+`pyproject.toml` declares `hatchling` (or another backend not already installed)
+fails at install and scores as unresolved.
+
+**Impact:** severely distorts per-repo rates. uproot5 loses 4/9 benchmark
+instances (13/30 across the full set), awkward 2/8, pyhf 1/33. Excluding install
+failures and 2 instances with no eval record, gold is 31/41 (75.6%) rather than
+the headline 31/50 (62.0%) — close to the ~80% target in GitHub issue #7.
+
+**Fix direction:** install the common PEP-517 backends (`hatchling`,
+`hatch-vcs`, `setuptools_scm`, `flit_core`, `poetry-core`) into the eval
+environment, or extend the existing `--no-build-isolation` fallback chain in
+`_install_repo()` to pre-install the backend named in `build-system.requires`.
+Re-run gold afterwards.
+
+### 28. `benchmark_v1.jsonl` violates its own gold-resolvable invariant ⚠️ OPEN
+
+**Severity: High.** `07_assemble_benchmark.py` selects only instances where gold
+resolves, reading `results/gold/evals/{owner}/{name}/{iid}.json`. It was run at
+12:48 on 2026-03-18, against the **pre-fix** gold evals (issue #24). The post-fix
+gold rerun that evening (23:15–00:05) overwrote those eval files, and 19 of the
+50 selected instances no longer pass gold.
+
+The committed `data/benchmark_v1.jsonl` therefore no longer satisfies the property
+it was constructed to guarantee.
+
+**Note:** the artifact was deliberately *not* regenerated, because `paper/instances.tex`
+was generated from this exact file — re-assembling silently would desync the paper.
+Re-assembly and paper regeneration must happen together, and after issue #27 is
+fixed (otherwise install failures will wrongly exclude good instances).
+
+### 29. Four instances resolved by solver but not by gold ⚠️ OPEN
+
+**Severity: Medium.** `pyhf-1349`, `pyhf-1389`, `pyhf-1491`, `pyhf-1662` are
+resolved by `claude_sonnet_1shot` but recorded as `f2p_ok: false` for gold, with
+oracle tests running both before and after in each case (so this is not an install
+or patch-apply artifact). Gold is the reference fix and should be an upper bound
+on any solver, so this indicates oracle nondeterminism or evaluator flakiness.
+
+Confounder to rule out first: the `claude_sonnet_1shot` evals predate the issue
+#24 fix while the gold evals postdate it, so the two were not produced by the same
+evaluator code. Re-run the solver under the fixed harness before investigating
+the oracles themselves.
+
+---
+
 ## Summary
 
 | # | Issue | Severity | Status |
@@ -414,3 +524,9 @@ fallback in case path names still diverge slightly despite context being availab
 | 21 | test_writer/validator.py not implemented | High | ✅ clone-once retry loop |
 | 22 | Solver outputs bare `@@` hunk separators | High | ✅ `_normalize_bare_hunk_headers()` + `--recount` |
 | 23 | Zero-context solver guesses wrong file paths | High | ✅ `fetch_source_context()` at base_commit |
+| 24 | Gold patches corrupted by LLM-patch normalisation | Critical | ✅ `is_gold` flag skips normalisation |
+| 25 | Evaluator ran instances with invalid oracles | High | ✅ `04_evaluate.py` checks `meta.json` `is_valid` |
+| 26 | Solver ignored benchmark subset | Medium | ✅ `--benchmark` flag + temp-file filtering |
+| 27 | Missing PEP-517 build backends (`hatchling`) in eval env | High | ⚠️ OPEN (distorts 7/19 gold failures) |
+| 28 | `benchmark_v1.jsonl` violates gold-resolvable invariant | High | ⚠️ OPEN (needs re-assembly after #27) |
+| 29 | Solver resolves 4 pyhf instances that gold does not | Medium | ⚠️ OPEN (rule out harness mismatch first) |
