@@ -133,6 +133,11 @@ def main() -> None:
         action="store_true",
         help="Re-generate oracles even if .py/.meta.json files already exist",
     )
+    parser.add_argument(
+        "--oldest-first",
+        action="store_true",
+        help="Process oldest instances first (default is newest first)",
+    )
     args = parser.parse_args()
 
     dataset_path = Path(args.dataset)
@@ -144,6 +149,12 @@ def main() -> None:
     if not instances:
         print("No instances found in dataset.", file=sys.stderr)
         sys.exit(1)
+
+    # Sort by created_at: newest first by default, oldest first with --oldest-first
+    instances.sort(
+        key=lambda x: x.get("created_at", ""),
+        reverse=not args.oldest_first,
+    )
 
     # Derive oracle dir from dataset path
     # dataset path: data/{owner}/{name}/candidates.jsonl

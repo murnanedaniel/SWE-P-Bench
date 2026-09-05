@@ -49,6 +49,7 @@ def _eval_one(
     oracle_code: str,
     predicted_patch: str,
     eval_out_path: str,
+    is_gold: bool = False,
 ) -> dict:
     """Worker: evaluate one instance and write result JSON.
 
@@ -65,6 +66,7 @@ def _eval_one(
         oracle_test_code=oracle_code,
         predicted_patch=predicted_patch,
         repo_config=repo_config,
+        is_gold=is_gold,
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -117,6 +119,11 @@ def main() -> None:
         default="results",
         help="Root results directory (default: results/)",
     )
+    parser.add_argument(
+        "--benchmark",
+        default=None,
+        help="Path to benchmark JSONL — only evaluate instances in this file",
+    )
     args = parser.parse_args()
 
     dataset_path = Path(args.dataset)
@@ -128,6 +135,24 @@ def main() -> None:
     if not instances:
         print("No instances found in dataset.", file=sys.stderr)
         sys.exit(1)
+
+    # Optionally filter to benchmark instances only
+    if args.benchmark:
+        benchmark_path = Path(args.benchmark)
+        if not benchmark_path.exists():
+            print(f"ERROR: benchmark file not found: {benchmark_path}", file=sys.stderr)
+            sys.exit(1)
+        benchmark_ids = set()
+        with open(benchmark_path) as f:
+            for line in f:
+                if line.strip():
+                    benchmark_ids.add(json.loads(line)["instance_id"])
+        before = len(instances)
+        instances = [i for i in instances if i["instance_id"] in benchmark_ids]
+        print(
+            f"--benchmark: {len(instances)}/{before} instances in benchmark",
+            flush=True,
+        )
 
     repo = instances[0].get("repo", "unknown/unknown")
     owner, name = (repo.split("/", 1) + ["unknown"])[:2]
@@ -157,9 +182,23 @@ def main() -> None:
             skipped += 1
             continue
 
-        # Load oracle code
+        # Load oracle code — only if the oracle is valid
         oracle_path = oracle_dir / f"{iid}.py"
         if not oracle_path.exists():
+            missing_oracle += 1
+            continue
+        meta_path = oracle_dir / f"{iid}.meta.json"
+        if meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text())
+                if not meta.get("is_valid"):
+                    missing_oracle += 1
+                    continue
+            except Exception:
+                missing_oracle += 1
+                continue
+        else:
+            # No meta.json means oracle was never validated
             missing_oracle += 1
             continue
         oracle_code = oracle_path.read_text()
@@ -197,9 +236,10 @@ def main() -> None:
 
         with ProcessPoolExecutor(max_workers=workers) as executor:
             futures = {
-                executor.submit(_eval_one, inst, oracle_code, patch, out_path): inst[
-                    "instance_id"
-                ]
+                executor.submit(
+                    _eval_one, inst, oracle_code, patch, out_path,
+                    is_gold=args.gold,
+                ): inst["instance_id"]
                 for inst, oracle_code, patch, out_path in work
             }
 

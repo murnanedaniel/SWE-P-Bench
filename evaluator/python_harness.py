@@ -332,6 +332,7 @@ def evaluate_python_instance(
     oracle_test_code: str,
     predicted_patch: str,
     repo_config: dict | None = None,
+    is_gold: bool = False,
 ) -> dict:
     """
     Evaluate *predicted_patch* against *oracle_test_code* for *instance*.
@@ -447,11 +448,16 @@ def evaluate_python_instance(
             result["error"] = "empty predicted patch"
             return result
 
-        # Normalise non-standard patch formats (bare-@@ separators, *** Begin Patch)
-        predicted_patch = _normalize_patch(predicted_patch)
+        # Normalise non-standard patch formats — but NOT gold patches,
+        # which are valid diffs from GitHub's API.  Normalisation can
+        # corrupt blank context lines and hunk counts.
+        if not is_gold:
+            predicted_patch = _normalize_patch(predicted_patch)
+            predicted_patch = _correct_hunk_positions(predicted_patch, repo_dir)
 
-        # Correct wrong hunk positions (normalization always starts from line 1)
-        predicted_patch = _correct_hunk_positions(predicted_patch, repo_dir)
+        # Ensure trailing newline (matches validator behaviour)
+        if not predicted_patch.endswith("\n"):
+            predicted_patch += "\n"
 
         patch_file = Path(tmpdir) / "predicted.patch"
         patch_file.write_text(predicted_patch)

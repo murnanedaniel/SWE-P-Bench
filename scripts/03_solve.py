@@ -65,9 +65,9 @@ def main() -> None:
         help="Solver name (must match a solver.{name} module, default: gpt5_mini)",
     )
     parser.add_argument(
-        "--only-valid-oracles",
+        "--include-invalid-oracles",
         action="store_true",
-        help="Skip instances that do not have a valid oracle",
+        help="Also solve instances with invalid/missing oracles (default: skip them)",
     )
     parser.add_argument(
         "--max-instances",
@@ -98,6 +98,11 @@ def main() -> None:
         default=4,
         help="Parallel API call workers (default: 4)",
     )
+    parser.add_argument(
+        "--benchmark",
+        default=None,
+        help="Path to benchmark JSONL — only solve instances in this file",
+    )
     args = parser.parse_args()
 
     dataset_path = Path(args.dataset)
@@ -110,14 +115,31 @@ def main() -> None:
         print("No instances found in dataset.", file=sys.stderr)
         sys.exit(1)
 
-    # Optionally filter to valid-oracle instances only
-    if args.only_valid_oracles:
+    # Optionally filter to benchmark instances only
+    if args.benchmark:
+        benchmark_path = Path(args.benchmark)
+        if not benchmark_path.exists():
+            print(f"ERROR: benchmark file not found: {benchmark_path}", file=sys.stderr)
+            sys.exit(1)
+        benchmark_ids = set()
+        with open(benchmark_path) as f:
+            for line in f:
+                if line.strip():
+                    benchmark_ids.add(json.loads(line)["instance_id"])
+        before = len(instances)
+        instances = [i for i in instances if i["instance_id"] in benchmark_ids]
+        print(
+            f"--benchmark: {len(instances)}/{before} instances in benchmark",
+            flush=True,
+        )
+
+    # Filter to valid-oracle instances by default
+    if not args.include_invalid_oracles:
         oracle_dir = dataset_path.parent / "oracles"
         before = len(instances)
         instances = _filter_valid_oracles(instances, oracle_dir)
         print(
-            f"--only-valid-oracles: {len(instances)}/{before} instances "
-            f"have valid oracles",
+            f"Filtered to valid oracles: {len(instances)}/{before} instances",
             flush=True,
         )
 
@@ -157,6 +179,7 @@ def main() -> None:
 
     # Pass max_attempts if the solver supports it (graceful fallback for other solvers)
     import inspect
+    import tempfile
     sig = inspect.signature(solver_mod.solve_dataset)
     extra_kwargs = {}
     if "max_attempts" in sig.parameters:
@@ -164,13 +187,25 @@ def main() -> None:
     if "workers" in sig.parameters:
         extra_kwargs["workers"] = args.workers
 
+    # Write filtered instances to a temp file so the solver module sees
+    # only the instances we want (it re-reads dataset_path internally).
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jsonl", delete=False
+    ) as tmp:
+        for inst in instances:
+            tmp.write(json.dumps(inst) + "\n")
+        effective_dataset = tmp.name
+
     solver_mod.solve_dataset(
-        dataset_path=str(dataset_path),
+        dataset_path=effective_dataset,
         out_dir=str(out_dir),
         max_instances=args.max_instances,
         repos_yml=args.repos_yml,
         **extra_kwargs,
     )
+
+    # Clean up temp file
+    Path(effective_dataset).unlink(missing_ok=True)
 
     # Count patches written
     patches = list(out_dir.glob("*.patch"))
