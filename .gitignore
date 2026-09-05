@@ -13,3 +13,13 @@ data/scikit-hep/
 results/
 *.patch
 .scraper_cache/
+
+# LaTeX build artifacts
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.bbl
+paper/*.blg
+paper/*.fls
+paper/*.fdb_latexmk
+paper/*.synctex.gz
